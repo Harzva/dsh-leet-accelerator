@@ -1,5 +1,6 @@
 import z from '@deepseek-ai/schemastery';
 import { DEFAULTS, PRUNE_MARKER, ToolResultPruner } from '@deepseek-ai/dsh-compaction-tool-result-pruner';
+import { createMetricsCache } from './metrics-cache.js';
 
 // The block selection and validation follow DeepSeek Harness's
 // dsh-compaction-tool-result-pruner (MIT):
@@ -8,6 +9,7 @@ import { DEFAULTS, PRUNE_MARKER, ToolResultPruner } from '@deepseek-ai/dsh-compa
 // whole tool result. A lone surrogate counts as one code point, exactly as the
 // upstream string iterator does.
 const SURROGATE_PAIR = /[\uD800-\uDBFF][\uDC00-\uDFFF]/;
+const MARKER_POINTS = Array.from(PRUNE_MARKER).length;
 
 /**
  * One linear UTF-16 pass: code-point count plus whether the text contains any
@@ -75,27 +77,70 @@ export class LeetAccelerator extends ToolResultPruner {
     enabled: z.boolean().default(false),
     fastLength: z.boolean().default(false),
     shortCircuit: z.boolean().default(true),
+    sessionMetrics: z.boolean().default(true),
     thresholdChars: z.number().step(1).min(1).default(DEFAULTS.thresholdChars),
     headChars: z.number().step(1).min(0).default(DEFAULTS.headChars),
     tailChars: z.number().step(1).min(0).default(DEFAULTS.tailChars),
   });
 
   constructor(ctx, options = {}) {
-    const { enabled = false, fastLength = false, shortCircuit = true, ...upstreamOptions } = options;
+    const {
+      enabled = false, fastLength = false, shortCircuit = true, sessionMetrics = true,
+      ...upstreamOptions
+    } = options;
     if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean');
     if (typeof fastLength !== 'boolean') throw new TypeError('fastLength must be a boolean');
     if (typeof shortCircuit !== 'boolean') throw new TypeError('shortCircuit must be a boolean');
+    if (typeof sessionMetrics !== 'boolean') throw new TypeError('sessionMetrics must be a boolean');
     super(ctx, upstreamOptions);
     this.enabled = enabled;
     this.fastLength = fastLength;
     this.shortCircuit = shortCircuit;
+    this.sessionMetrics = sessionMetrics;
+    // Only used while a pruneSession call is on the stack. See pruneSession().
+    this._inPruneSession = false;
+    this._metrics = undefined;
+  }
+
+  _measureExact(blocks) {
+    let chars = 0;
+    for (const block of blocks) if (block.type === 'text') chars += analyze(block.text, this.fastLength).length;
+    return chars;
   }
 
   measureContent(blocks) {
     if (!this.enabled) return super.measureContent(blocks);
-    let chars = 0;
-    for (const block of blocks) if (block.type === 'text') chars += analyze(block.text, this.fastLength).length;
-    return chars;
+    const cache = this._metrics;
+    if (cache) {
+      const hit = cache.get(blocks);
+      if (hit !== undefined) return hit;
+      const value = this._measureExact(blocks);
+      cache.put(blocks, value);
+      return value;
+    }
+    return this._measureExact(blocks);
+  }
+
+  /**
+   * Upstream pruneSession measures each over-budget result four times (twice
+   * inside pruneContent, then charsBefore and charsAfter). We keep the whole
+   * upstream session logic via super() and only install a short-lived,
+   * structure-verified measurement cache around it. The cache is created
+   * lazily, on the first result that actually needs pruning, so sessions where
+   * everything is within budget pay no cache cost at all.
+   */
+  pruneSession(session) {
+    if (!this.enabled || !this.sessionMetrics) return super.pruneSession(session);
+    const previousActive = this._inPruneSession;
+    const previousCache = this._metrics;
+    this._inPruneSession = true;
+    this._metrics = undefined;
+    try {
+      return super.pruneSession(session);
+    } finally {
+      this._inPruneSession = previousActive;
+      this._metrics = previousCache;
+    }
   }
 
   pruneContent(blocks) {
@@ -117,13 +162,28 @@ export class LeetAccelerator extends ToolResultPruner {
       ? analyze(block.text, this.fastLength)
       : { length: 0, paired: false });
     const totalChars = analyzed.reduce((sum, entry) => sum + entry.length, 0);
-    if (totalChars <= this.config.thresholdChars) return null;
+
+    if (this._inPruneSession && !this._metrics && totalChars > this.config.thresholdChars) {
+      this._metrics = createMetricsCache();
+    }
+    const cache = this._metrics;
+    if (totalChars <= this.config.thresholdChars) {
+      if (cache) cache.put(blocks, totalChars);
+      return null;
+    }
+    cache?.put(blocks, totalChars);
 
     const removedStart = this.config.headChars;
     const removedEnd = totalChars - this.config.tailChars;
     const pruned = [];
     let consumed = 0;
     let markerInserted = false;
+    // With a live cache we can derive charsAfter exactly from the code-point
+    // positions already computed, instead of scanning the pruned text again.
+    // headEnd <= tailStart always holds (valid budgets + totalChars > threshold),
+    // so the kept head and tail never overlap. A block that produced no text
+    // contributes zero, exactly as measureContent() would count it.
+    let charsAfterDerived = 0;
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
       if (block.type !== 'text') {
@@ -140,9 +200,11 @@ export class LeetAccelerator extends ToolResultPruner {
       const text = block.text.slice(0, pointOffset(block.text, headEnd, length, paired))
         + marker + block.text.slice(pointOffset(block.text, tailStart, length, paired));
       if (text.length > 0) pruned.push({ ...block, text });
+      if (cache) charsAfterDerived += headEnd + (length - tailStart) + (marker ? MARKER_POINTS : 0);
       consumed = blockEnd;
     }
     if (!markerInserted) throw new Error('tool-result prune: failed to locate the removed text span');
+    if (cache) cache.put(pruned, charsAfterDerived);
     const charsAfter = this.measureContent(pruned);
     if (charsAfter > this.config.thresholdChars || charsAfter >= totalChars) {
       throw new Error('tool-result prune: replacement must be smaller and within threshold');

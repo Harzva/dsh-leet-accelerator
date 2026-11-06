@@ -8,6 +8,9 @@
 // answers: "which provider and which switch values would a Web session that
 // selected one of the three derived presets actually use?" It does not start a
 // Web Host or an agent session; see VERIFICATION.md for that boundary.
+// 0.4.0 added a second config-level switch, `sessionMetrics`; both switches
+// must be inherited from the provider default rather than written into the
+// Host-read preset rows, otherwise old session logs would stop resolving.
 import { Context } from '@deepseek-ai/cordis';
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection';
 import TokenMeter from '@deepseek-ai/dsh-token-meter';
@@ -61,28 +64,41 @@ const rows = HOST_READ_ROWS.map(row => {
     instance: service.constructor.name,
     shortCircuit: service instanceof LeetAccelerator ? service.shortCircuit : 'n/a (official)',
     shortCircuitInPreset: Object.hasOwn(row.config, 'shortCircuit'),
+    sessionMetrics: service instanceof LeetAccelerator ? service.sessionMetrics : 'n/a (official)',
+    sessionMetricsInPreset: Object.hasOwn(row.config, 'sessionMetrics'),
     longParity: JSON.stringify(service.pruneContent(structuredClone(longBlocks))) === JSON.stringify(expectedLong),
     shortReturnsNull: service.pruneContent(shortBlocks) === null,
     edgeReturnsNull: service.pruneContent(edgeBlocks) === null,
   };
 });
 
-// Same Host-read linear row with the switch explicitly disabled.
+// Same Host-read linear row with each config-level switch explicitly disabled.
 const linearRow = HOST_READ_ROWS[1];
-const noShort = createService(LeetAccelerator, { ...linearRow.config, shortCircuit: false });
-const offVariant = {
-  longParity: JSON.stringify(noShort.pruneContent(structuredClone(longBlocks))) === JSON.stringify(expectedLong),
-  shortReturnsNull: noShort.pruneContent(shortBlocks) === null,
-  edgeReturnsNull: noShort.pruneContent(edgeBlocks) === null,
+function variant(overrides) {
+  const service = createService(LeetAccelerator, { ...linearRow.config, ...overrides });
+  return {
+    longParity: JSON.stringify(service.pruneContent(structuredClone(longBlocks))) === JSON.stringify(expectedLong),
+    shortReturnsNull: service.pruneContent(shortBlocks) === null,
+    edgeReturnsNull: service.pruneContent(edgeBlocks) === null,
+  };
+}
+const switchOffVariants = {
+  shortCircuit: variant({ shortCircuit: false }),
+  sessionMetrics: variant({ sessionMetrics: false }),
+  both: variant({ shortCircuit: false, sessionMetrics: false }),
 };
+const switchOffOk = Object.values(switchOffVariants)
+  .every(v => v.longParity && v.shortReturnsNull && v.edgeReturnsNull);
 
 const [off, linear, fast] = rows;
 const pass = off.provider === OFFICIAL && off.instance === 'ToolResultPruner'
   && linear.provider === 'dsh-leet-accelerator' && fast.provider === 'dsh-leet-accelerator'
   && linear.shortCircuit === true && fast.shortCircuit === true
+  && linear.sessionMetrics === true && fast.sessionMetrics === true
   && rows.every(row => row.shortCircuitInPreset === false)
+  && rows.every(row => row.sessionMetricsInPreset === false)
   && rows.every(row => row.longParity && row.shortReturnsNull && row.edgeReturnsNull)
-  && offVariant.longParity && offVariant.shortReturnsNull && offVariant.edgeReturnsNull;
+  && switchOffOk;
 
-console.log(JSON.stringify({ source: 'real Host agentPresets/read (0.2.0 run, VERIFICATION.md §4)', rows, shortCircuitOffVariant: offVariant, verdict: pass ? 'PASS' : 'FAIL' }, null, 2));
+console.log(JSON.stringify({ source: 'real Host agentPresets/read (0.2.0 run, VERIFICATION.md §4)', rows, switchOffVariants, verdict: pass ? 'PASS' : 'FAIL' }, null, 2));
 if (!pass) process.exit(1);

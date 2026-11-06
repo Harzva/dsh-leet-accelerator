@@ -1,0 +1,610 @@
+{
+  "node": "v24.16.0",
+  "platform": "darwin/arm64",
+  "scope": "pruneSession algorithm-local microbenchmark only; no model, no network, no end-to-end agent run",
+  "warmups": 8,
+  "samplesPerCase": 40,
+  "unit": "milliseconds",
+  "variants": [
+    "official",
+    "off",
+    "linear",
+    "linear+short",
+    "linear+short+cache",
+    "fast+short+cache"
+  ],
+  "cases": [
+    {
+      "name": "within-budget",
+      "toolResults": 2,
+      "results": {
+        "official": {
+          "p50": 0.04037500000004002,
+          "p95": 0.06162499999982174,
+          "min": 0.0317920000002232,
+          "max": 0.11004199999979392
+        },
+        "off": {
+          "p50": 0.041749999999865395,
+          "p95": 0.06416600000011385,
+          "min": 0.03233299999965311,
+          "max": 0.45362500000010186
+        },
+        "linear": {
+          "p50": 0.012624999999843567,
+          "p95": 0.05133399999976973,
+          "min": 0.011167000000114058,
+          "max": 0.2492090000000644
+        },
+        "linear+short": {
+          "p50": 0.0015000000003055902,
+          "p95": 0.0038749999998799467,
+          "min": 0.0006659999999101274,
+          "max": 0.007708000000093307
+        },
+        "linear+short+cache": {
+          "p50": 0.0014580000001842564,
+          "p95": 0.0022089999997660925,
+          "min": 0.0007500000001527951,
+          "max": 0.02587500000026921
+        },
+        "fast+short+cache": {
+          "p50": 0.0014999999998508429,
+          "p95": 0.004666999999699328,
+          "min": 0.0007080000000314612,
+          "max": 0.008957999999893218
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 2,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 2,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 0,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear+short": {
+          "measureContentCalls": 0,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 0,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 0,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "mixed-budget",
+      "toolResults": 4,
+      "results": {
+        "official": {
+          "p50": 7.10479099999975,
+          "p95": 11.085207999999966,
+          "min": 6.385999999999967,
+          "max": 12.361249999999927
+        },
+        "off": {
+          "p50": 7.343124999999873,
+          "p95": 15.185624999999618,
+          "min": 6.200166000000081,
+          "max": 18.40583400000014
+        },
+        "linear": {
+          "p50": 1.1667499999998654,
+          "p95": 2.7390830000003916,
+          "min": 1.0479580000001079,
+          "max": 2.980833999999959
+        },
+        "linear+short": {
+          "p50": 1.1635000000001128,
+          "p95": 2.946458999999777,
+          "min": 1.0405829999999696,
+          "max": 5.744916999999987
+        },
+        "linear+short+cache": {
+          "p50": 0.5921250000001237,
+          "p95": 1.9366250000002765,
+          "min": 0.5190000000002328,
+          "max": 4.055500000000393
+        },
+        "fast+short+cache": {
+          "p50": 0.05437499999970896,
+          "p95": 0.12529100000028848,
+          "min": 0.03999999999996362,
+          "max": 0.1996249999997417
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 7,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 7,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 310318
+        },
+        "linear+short": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 310318
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "single-large-ascii",
+      "toolResults": 1,
+      "results": {
+        "official": {
+          "p50": 6.78308399999969,
+          "p95": 7.821915999999874,
+          "min": 6.2899170000000595,
+          "max": 8.95745899999929
+        },
+        "off": {
+          "p50": 7.058207999999922,
+          "p95": 9.580833999999868,
+          "min": 6.213333000000148,
+          "max": 21.463583999999628
+        },
+        "linear": {
+          "p50": 1.1019580000001952,
+          "p95": 1.4754170000001068,
+          "min": 1.0561670000001868,
+          "max": 3.116374999999607
+        },
+        "linear+short": {
+          "p50": 1.0989999999997053,
+          "p95": 1.5180840000002718,
+          "min": 1.0112499999995634,
+          "max": 1.7147079999999733
+        },
+        "linear+short+cache": {
+          "p50": 0.5600830000003043,
+          "p95": 0.9014589999997042,
+          "min": 0.5102090000000317,
+          "max": 1.6033749999996871
+        },
+        "fast+short+cache": {
+          "p50": 0.04491600000028484,
+          "p95": 0.06395900000006804,
+          "min": 0.037792000000081316,
+          "max": 0.22516599999971731
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 310318
+        },
+        "linear+short": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 310318
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "single-large-cjk",
+      "toolResults": 1,
+      "results": {
+        "official": {
+          "p50": 7.051042000000052,
+          "p95": 31.694041999999172,
+          "min": 4.154916000000412,
+          "max": 119.13374999999996
+        },
+        "off": {
+          "p50": 5.7797920000002705,
+          "p95": 31.005667000000358,
+          "min": 4.127166000000216,
+          "max": 48.809290999999575
+        },
+        "linear": {
+          "p50": 1.1642910000000484,
+          "p95": 2.3580829999991693,
+          "min": 1.0307499999998981,
+          "max": 4.952707999999802
+        },
+        "linear+short": {
+          "p50": 1.1810410000007323,
+          "p95": 3.0140840000003664,
+          "min": 1.053791999999703,
+          "max": 4.015250000000378
+        },
+        "linear+short+cache": {
+          "p50": 0.5721249999996871,
+          "p95": 1.1737499999999272,
+          "min": 0.5258329999996931,
+          "max": 2.4917499999992287
+        },
+        "fast+short+cache": {
+          "p50": 0.2569579999999405,
+          "p95": 0.46287500000016735,
+          "min": 0.2321670000001177,
+          "max": 7.0917499999995925
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 310318
+        },
+        "linear+short": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 310318
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "single-large-emoji",
+      "toolResults": 1,
+      "results": {
+        "official": {
+          "p50": 3.739125000000058,
+          "p95": 10.096708000000035,
+          "min": 2.634166999999252,
+          "max": 12.616957999999613
+        },
+        "off": {
+          "p50": 3.8748750000004293,
+          "p95": 10.467875000000276,
+          "min": 2.6313749999999345,
+          "max": 11.92687500000011
+        },
+        "linear": {
+          "p50": 1.0292499999995925,
+          "p95": 2.2112919999999576,
+          "min": 0.9464170000001104,
+          "max": 5.012792000000445
+        },
+        "linear+short": {
+          "p50": 1.0108749999999418,
+          "p95": 1.747624999999971,
+          "min": 0.9582080000000133,
+          "max": 2.593124999999418
+        },
+        "linear+short+cache": {
+          "p50": 0.5244160000002012,
+          "p95": 0.785291000000143,
+          "min": 0.4799170000005688,
+          "max": 1.5748750000002474
+        },
+        "fast+short+cache": {
+          "p50": 0.5109169999996084,
+          "p95": 2.0435420000003433,
+          "min": 0.4825829999999769,
+          "max": 2.8155409999999392
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 320558
+        },
+        "linear+short": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 320558
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "single-large-mixed",
+      "toolResults": 1,
+      "results": {
+        "official": {
+          "p50": 7.549874999999702,
+          "p95": 12.906958999999915,
+          "min": 4.920000000000073,
+          "max": 24.156708000000435
+        },
+        "off": {
+          "p50": 6.314958999999362,
+          "p95": 14.454333000000588,
+          "min": 4.920500000000175,
+          "max": 22.11016699999982
+        },
+        "linear": {
+          "p50": 1.843792000000576,
+          "p95": 4.228667000000314,
+          "min": 1.6413339999999152,
+          "max": 11.037416000000121
+        },
+        "linear+short": {
+          "p50": 1.752042000000074,
+          "p95": 3.8584170000003724,
+          "min": 1.5919169999997393,
+          "max": 3.99737499999992
+        },
+        "linear+short+cache": {
+          "p50": 0.8780419999993683,
+          "p95": 2.3151660000003176,
+          "min": 0.8047499999993306,
+          "max": 11.047333999999864
+        },
+        "fast+short+cache": {
+          "p50": 0.873833000000559,
+          "p95": 2.0307500000008076,
+          "min": 0.7876249999999345,
+          "max": 13.593458000000282
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 387878
+        },
+        "linear+short": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 387878
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "multi-block",
+      "toolResults": 1,
+      "results": {
+        "official": {
+          "p50": 3.9737500000010186,
+          "p95": 4.969292000001587,
+          "min": 3.61004099999991,
+          "max": 8.799958999999944
+        },
+        "off": {
+          "p50": 3.946208999999726,
+          "p95": 4.957666999998764,
+          "min": 3.5716250000004948,
+          "max": 9.732834000000366
+        },
+        "linear": {
+          "p50": 1.387416999999914,
+          "p95": 2.0672080000003916,
+          "min": 1.2902909999993426,
+          "max": 3.0630419999997684
+        },
+        "linear+short": {
+          "p50": 1.3924580000002607,
+          "p95": 2.255583000000115,
+          "min": 1.2737919999999576,
+          "max": 2.8995829999994385
+        },
+        "linear+short+cache": {
+          "p50": 0.7238749999996799,
+          "p95": 1.639791999999943,
+          "min": 0.6670420000009472,
+          "max": 1.8457079999998314
+        },
+        "fast+short+cache": {
+          "p50": 0.725124999999025,
+          "p95": 1.159958000000188,
+          "min": 0.6612500000010186,
+          "max": 2.0657499999997526
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 4,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 409732
+        },
+        "linear+short": {
+          "measureContentCalls": 3,
+          "exactScans": 3,
+          "utf16UnitsScanned": 409732
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 3,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    },
+    {
+      "name": "ten-results",
+      "toolResults": 10,
+      "results": {
+        "official": {
+          "p50": 11.747042000000874,
+          "p95": 16.59875000000102,
+          "min": 9.491374999999607,
+          "max": 20.742957999998907
+        },
+        "off": {
+          "p50": 12.360875000000306,
+          "p95": 17.639667000001282,
+          "min": 9.609458000000814,
+          "max": 18.73925000000054
+        },
+        "linear": {
+          "p50": 2.857165999999779,
+          "p95": 4.593500000000859,
+          "min": 2.5057080000005953,
+          "max": 5.671042000001762
+        },
+        "linear+short": {
+          "p50": 2.7870419999999285,
+          "p95": 3.3322080000016285,
+          "min": 2.5207080000000133,
+          "max": 4.428458999998838
+        },
+        "linear+short+cache": {
+          "p50": 1.5007910000003903,
+          "p95": 3.0494589999998425,
+          "min": 1.335584000000381,
+          "max": 3.4995829999988928
+        },
+        "fast+short+cache": {
+          "p50": 1.2160420000000158,
+          "p95": 2.118792000001122,
+          "min": 1.1033750000005966,
+          "max": 6.659375000001091
+        }
+      },
+      "scanAudit": {
+        "official": {
+          "measureContentCalls": 40,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "off": {
+          "measureContentCalls": 40,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "linear": {
+          "measureContentCalls": 30,
+          "exactScans": 30,
+          "utf16UnitsScanned": 728780
+        },
+        "linear+short": {
+          "measureContentCalls": 30,
+          "exactScans": 30,
+          "utf16UnitsScanned": 728780
+        },
+        "linear+short+cache": {
+          "measureContentCalls": 30,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        },
+        "fast+short+cache": {
+          "measureContentCalls": 30,
+          "exactScans": 0,
+          "utf16UnitsScanned": 0
+        }
+      }
+    }
+  ]
+}

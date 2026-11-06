@@ -27,12 +27,15 @@ All six export specifiers resolve correctly from an installed profile, including
 
 ## 3. Local tests and benchmarks
 
-As of 0.3.0, `npm test` → **18 passing, 0 failing** on Node `v24.16.0`.
+As of 0.4.0, `npm test` → **26 passing, 0 failing** on Node `v24.16.0`.
 
-- `test/parity.test.js`: all eight `enabled × fastLength × shortCircuit` combinations compared with the official `0.2.2-rc.1` implementation; threshold boundaries; 300 seeded random multi-block Unicode cases; isolated high/low surrogates in separate blocks; surrogate pairs at the front/end of a block; ZWJ sequences, combining marks, BOM, NUL; odd head/tail budgets; invalid configs; a dedicated `shortCircuit` upper-bound test at 49/50/51 UTF-16 units with ASCII, CJK, emoji pairs and lone surrogates; and complete `pruneSession` parity (shadow-price event, replacement metadata, source seqs, repeated prune, replay, derived messages). A dedicated test calls `ToolResultPruner.prototype.measureContent/pruneContent` directly on an `enabled:false` instance to show the off branch delegates to the official algorithm.
+- `test/parity.test.js`: all sixteen `enabled × fastLength × shortCircuit × sessionMetrics` combinations compared with the official `0.2.2-rc.1` implementation; threshold boundaries; 300 seeded random multi-block Unicode cases; isolated high/low surrogates in separate blocks; surrogate pairs at the front/end of a block; ZWJ sequences, combining marks, BOM, NUL; odd head/tail budgets; invalid configs; a dedicated `shortCircuit` upper-bound test at 49/50/51 UTF-16 units with ASCII, CJK, emoji pairs and lone surrogates; a dedicated `charsAfter` derivation test comparing the cached value with `official.measureContent(expected)` across 250 randomized pruned shapes; a cache-disposal / zero-cost-within-budget-session test; and complete `pruneSession` parity for both single-result and five-result mixed-Unicode sessions (numeric receipts, shadow-price event, replacement metadata, source seqs, repeated prune, replay, derived messages). A dedicated test calls `ToolResultPruner.prototype.measureContent/pruneContent` directly on an `enabled:false` instance to show the off branch delegates to the official algorithm.
+- `test/metrics-cache.test.js`: same-array hits, different-array misses, `0` as a valid cached value, every structural mutation that can change a code-point total invalidating the entry, changes that cannot change the count being safe hits, and per-instance cache scope / overwrite.
 - `test/web-presets.test.js`: preset derivation, fail-closed behavior, rollback on collision, idempotent disposal, lifecycle wording, and **client-side unit tests** with a fake React and fake slot registry (state machine, envelope handling, dependency, disabled states, keyboard/ARIA attributes, failure text). These are unit tests, not browser or session-scope proof.
 - `test/control.test.js`: local overlay writer.
-- `npm run benchmark` → `benchmark/last-run.json`: eight input classes × six variants, 12 warmups, 60 alternating samples each, P50/P95/min/max. Three cases are within budget (where `shortCircuit` applies) and five are over budget. Full P50 and P95 tables and the noisy-P95 caveat are in `README.md` / `README.zh.md`. Node `v24.16.0` was pinned explicitly; an earlier accidental run on the system Node `v22.22.2` was discarded as not comparable.
+- `npm run benchmark` → `benchmark/last-run.json`: eight input classes × six variants, 12 warmups, 60 alternating samples each, P50/P95/min/max. Three cases are within budget (where `shortCircuit` applies) and five are over budget. Re-run for 0.4.0 on the pinned Node 24; the numbers moved materially from the 0.3.0 run (official `large-mixed` P50 6.00 → 7.40 ms), so both README tables were regenerated from the new JSON rather than carried over. Full P50 and P95 tables and the noisy-P95 caveat are in `README.md` / `README.zh.md`.
+- `npm run benchmark:session` → `benchmark/session-last-run.json`: eight session shapes × six variants, 8 warmups, 40 alternating samples, P50/P95/min/max, plus a one-off untimed scan audit per variant. A fresh `Session` is built from a fixed event seed **outside the timed region** for each sample because `pruneSession` appends events; every variant's `PruneResult` is asserted equal to the official one before timing. See §11.
+- Node `v24.16.0` was pinned explicitly for both benchmarks; an earlier accidental run on the system Node `v22.22.2` was discarded as not comparable.
 
 ## 4. Real Web Host — 0.2.0 run (isolated, DSH 0.2.2-rc.1)
 
@@ -95,17 +98,18 @@ Consequences: `fastLength` remains an **experimental, default-off candidate** wi
 
 ## 8. Open items and known risks
 
-- No real-model before/after comparison (§7). Still blocked by HTTP 402; no new request was sent for 0.3.0.
-- No runtime probe of `toolResultPruner` inside a live **agent session**; no real already-started session was exercised (§4, §5). The 0.3.0 runtime probe runs in a real DSH process but at profile startup, not inside a running session.
-- Clean-profile runtime-load probe and `dsh plugin remove` uninstall passed for both 0.2.0 (§6) and 0.3.0 (§10); the earlier pnpm `storeDir` mismatch is a resolved test-harness issue, not a plugin defect.
-- **0.3.0 did not repeat the real-Chrome button/reload/wire checks.** Webserver startup hangs in this sandbox after a correct `--dump-config`, across launchers, HOMEs, ports and Node versions (§10). The Web layer is byte-identical to `v0.2.0`, so §4–§6 still describe the applicable browser evidence, but no 0.3.0 browser pass is claimed.
-- A repeat `dsh plugin add` of the final tarball stalled at pnpm installation in this sandbox; only the byte-identical verification tarball completed the full install / runtime / uninstall cycle (§10).
+- No real-model before/after comparison (§7). Still blocked by HTTP 402; no new request was sent for 0.3.0 or 0.4.0.
+- No runtime probe of `toolResultPruner` inside a live **agent session**; no real already-started session was exercised (§4, §5). The 0.3.0 / 0.4.0 runtime probes run in a real DSH process but at profile startup, not inside a running session.
+- Clean-profile runtime-load probe and `dsh plugin remove` uninstall passed for 0.2.0 (§6), 0.3.0 (§10) and 0.4.0 (§11); the earlier pnpm `storeDir` mismatch is a resolved test-harness issue, not a plugin defect.
+- **0.3.0 and 0.4.0 did not repeat the real-Chrome button/reload/wire checks.** Webserver startup hangs in this sandbox after a correct `--dump-config`, across launchers, HOMEs, ports and Node versions (§10). The Web layer is byte-identical to `v0.2.0` in all three releases, so §4–§6 still describe the applicable browser evidence, but no new browser pass is claimed.
+- A repeat `dsh plugin add` of the 0.3.0 final tarball stalled at pnpm installation in this sandbox; only the byte-identical verification tarball completed the full install / runtime / uninstall cycle (§10). See §11 for the 0.4.0 result.
 - The default global `dsh` symlink now targets toolchain `0.1.1-rc.2`; using it against a 0.2.x profile fails with the `standard` preset error and can rewrite the profile's `@deepseek-ai/*` dependencies. Use the pinned DSH `0.2.2-rc.1` launcher when reproducing.
-- `fastLength` remains an unvalidated, default-off candidate: no measurable gain on emoji-heavy, mixed or multi-block inputs in the latest run (−1.2% to +0.3% P50 vs linear), versus −5.5% to −12.3% in the 0.2.0 run. Cross-run variance is large.
-- `shortCircuit` only helps content already within `thresholdChars`; over-budget tool results still take the full scan.
+- `fastLength` remains an unvalidated, default-off candidate: on emoji-heavy, mixed or multi-block inputs its P50 versus linear has ranged from −12.3% to +3.9% across runs. Cross-run variance is large; no stable gain is claimed.
+- `shortCircuit` only helps content already within `thresholdChars`. Over-budget tool results are the path `sessionMetrics` addresses.
+- `sessionMetrics` has **no Web button** and no real-model evidence. Only `enabled` and `fastLength` are exposed in the Web UI; adding buttons for the two later switches would require new preset ids with the uninstall lifecycle risk below, so the Web layer was deliberately left byte-identical. Its `charsAfter` derivation is validated against official `measureContent` on randomized multi-block Unicode and full session replay, but only against DSH `0.2.2-rc.1`; a future upstream change to `PRUNE_MARKER` or the pruned shape needs re-validation.
 - Derived preset ids can break historical session recovery after uninstall; documented in both READMEs and in the preset descriptions. Switch affected sessions back to `standard` before uninstalling.
 - Only DSH `0.2.2-rc.1` was verified; other versions inside the declared `>=0.2.2-rc.1 <0.3.0` range are untested.
-- Local P95 and max are noisy (official `large-cjk` P95 17.0 ms / max 26.4 ms in the 0.3.0 run); 60 samples per variant is a small sample.
+- Local P95 and max are noisy (official `large-cjk` P95 38.1 ms in the 0.4.0 `pruneContent` run and 31.7 ms in the session run); 40–60 samples per variant is a small sample.
 - The top-level bundle patch does not control Web sessions' isolated compaction groups.
 - The Host's `schedule` / `session-projection-cache` entries fail to activate in this environment due to the file-broker shim; unrelated to the plugin but worth noting when reproducing.
 - Not listed in any concrete DSH plugin market index.
@@ -130,7 +134,9 @@ After the 0.2.0 release, two further algorithm candidates were measured with `re
 
 **Status in 0.2.0:** neither candidate was in the shipped `src/index.js`, in any preset, in any Web button, or in the 0.2.0 tarball.
 
-**Status in 0.3.0:** `shortCircuit` was adopted as a third independent config switch (default `true`) in `src/index.js`, using the upper-bound check described above. It deliberately adds **no preset id and no Web button**: Web sessions inherit it through the provider default, so session-log compatibility with 0.2.0 is preserved. `reuseMeasure` remains research-only because its immutability precondition and short-session regression are unresolved. Neither candidate carries real-model evidence (§7). The research table above predates adoption; the shipped implementation is covered by the eight-state parity tests and the eight-case benchmark (§3) and by the runtime probe (§11). P95 is noisy on this machine and 60 samples is a small sample.
+**Status in 0.3.0:** `shortCircuit` was adopted as a third independent config switch (default `true`) in `src/index.js`, using the upper-bound check described above. It deliberately adds **no preset id and no Web button**: Web sessions inherit it through the provider default, so session-log compatibility with 0.2.0 is preserved. `reuseMeasure` remains research-only because its immutability precondition and short-session regression are unresolved. Neither candidate carries real-model evidence (§7). The research table above predates adoption; the shipped implementation is covered by the eight-state parity tests and the eight-case benchmark (§3) and by the runtime probe (§10). P95 is noisy on this machine and 60 samples is a small sample.
+
+**Status in 0.4.0:** `sessionMetrics` supersedes the research-only `reuseMeasure` idea with a different design. Instead of assuming content arrays are never mutated, it verifies an O(block-count) structural snapshot on every hit (array length, each block's `type`, each text block's immutable `text`) and derives `charsAfter` from code-point positions already computed during pruning. The cache is created lazily on the first over-budget result, so the short-session regression that disqualified `reuseMeasure` does not appear: the `within-budget` session is 0.0015 ms with and without the cache, with 0 exact scans in both. Over-budget session shapes are 46.2–51.6% lower P50 than the 0.3.0 path (§11). It is a config-level switch with no preset id and no Web button. `reuseMeasure` itself is still research-only and is not shipped. Neither candidate carries real-model evidence (§7).
 
 ## 10. 0.3.0 change and re-verification
 
@@ -154,23 +160,50 @@ That probe instantiates the installed package's real service, confirms the defau
 
 **Real model task.** Still blocked by the single HTTP 402 / `QUOTA: Insufficient Balance` (§7). No further request was sent and no before/after result is claimed for `shortCircuit` or any other switch.
 
-## 11. Reproducible commands
+## 11. 0.4.0 change and re-verification
+
+**What actually changed.** A fourth independent config switch `sessionMetrics` (default `true`) in `src/index.js`, plus one new runtime file `src/metrics-cache.js`. `pruneSession` wraps one synchronous call in a lazily created, structure-verified `WeakMap`; `measureContent` consults it; `pruneContent` derives `charsAfter` from code-point positions it already computed instead of rescanning the pruned text. A hit requires the array length, every block's `type` and each text block's `text` to match a flat snapshot. Strings are immutable and non-text blocks contribute zero, so a matching snapshot proves the code-point total cannot have changed; pushing, splicing, replacing a block, flipping a type or assigning a different text invalidates the entry and falls back to an exact scan. The cache is disposed in `try/finally`; nested calls save and restore the previous state. It is created only on the first result that actually exceeds the threshold, so an all-within-budget session allocates nothing. `sessionMetrics: false` restores the 0.3.0 path exactly.
+
+`cordis.patch.yml`, `src/web-presets.js` and `src/client/index.js` remain **byte-identical to the `v0.2.0` tag**. No preset id, Web button or client-manifest entry was added. `package.json` changes only in `version` and the added `benchmark:session` script; `package-lock.json`'s two root version fields were synced.
+
+**Tests.** `npm test` on Node `v24.16.0` → **26/26**, covering all sixteen switch combinations (§3). One early failure was a test-expectation error, not a code defect: the test demanded a cache miss after replacing a text block with `String(text).slice()`. Primitive strings have no identity and that expression yields the same string value, so a hit is correct. The case was moved into an explicit safe-hit assertion; the cache's real invalidation cases all pass. `test/metrics-cache.test.js` additionally covers `0` as a valid cached value, per-instance scope and overwrite.
+
+**Benchmarks.** Both benchmarks were re-run on the pinned Node 24 (§3). `benchmark/last-run.json` moved materially from the 0.3.0 run (official `large-mixed` P50 6.00 → 7.40 ms), so both README P50/P95 tables were regenerated from the new JSON. `benchmark/session-compare.js` is new: eight session shapes × six variants, 8 warmups, 40 alternating samples, with `Session` construction outside the timed region and a `PruneResult` equality assertion before timing. `+cache` is 46.2–51.6% below the 0.3.0 path on P50 for every over-budget case and 81.8–91.9% below official; P95 improvement is 8.5–61.1% and noisy. `within-budget` is 0.0015 ms with and without the cache. The untimed scan audit shows 3 extra full-text scans per over-budget result dropping to 0 (30 → 0 for ten results); official / `off` variants scan through upstream `Array.from`, which that counter does not observe. `fast+cache` gains come from the default-off `fastLength`, not from the cache. These are algorithm-local numbers only.
+
+**Correctness of the derived value.** `charsAfterDerived = headEnd + (length - tailStart) + markerPoints` is exact because `PRUNE_MARKER` is pure ASCII and always separates the retained head and tail whenever a block's removed span is non-empty, so no new surrogate pair can form across that boundary. `test/parity.test.js` compares it against `official.measureContent(expected)` on 250 randomized multi-block Unicode pruned shapes, and compares full numeric receipts / events / replay on both single-result and five-result mixed-Unicode sessions across all sixteen combinations. A five-result session is important here because the cache lives across every result in one `pruneSession` call.
+
+**Clean tarball install / runtime / uninstall (0.4.0).** A fresh isolated `DSH_HOME` (`clean-home-8`) and profile `v040` were created with `storeDir` pinned in `pnpm-workspace.yaml` / `.npmrc` **before** installing. `dsh plugin add` of the verification tarball completed in 450 ms with no `prepare` script and no `allowBuilds` permission. `--dump-config` produced 379 lines showing `# == @deepseek-ai/dsh-base, patched by dsh-leet-accelerator`, the official `tool-result-pruner` row with `disabled: true`, the plugin row with `enabled: true`, and `leet-web-presets`. The pruner row contains **no `shortCircuit` or `sessionMetrics` key**, confirming that Web sessions inherit both from the provider defaults. A `--patch` runtime probe executed *inside* that clean DSH 0.2.2-rc.1 process and printed:
+
+```
+LEET_PROBE_V040 service=LeetAccelerator enabled=true shortCircuit=true sessionMetrics=true short=both-null long=6439 cacheParity=identical cachedCharsAfter=5159 exactCharsAfter=5159
+```
+
+`long=6439` is UTF-16 units; `5159` is code points (4096 head + 39 marker + 1024 tail), matching the 0.2.0/0.3.0 result. The probe toggled `sessionMetrics` off and confirmed byte-identical `pruneContent` output, then activated the live cache path with a duck-typed cache and confirmed the derived `charsAfter` equals an exact `_measureExact` scan, and that the cache / call-stack flag are cleared afterwards. The base-profile process does not exit by itself after the probe; it was terminated by the harness timeout **after** the verdict was printed. The two `session-projection-cache` / `schedule` EPIPE warnings in that process are the sandbox file-broker shim, not a plugin failure. `dsh plugin remove` then succeeded in 326 ms; the installed directory is gone, `--dump-config` drops to 366 lines, the official `@deepseek-ai/dsh-compaction-tool-result-pruner` row is **enabled again** with no `disabled:` marker, and no `leet-*` rows remain. Uninstall restores the official algorithm.
+
+**Packed artifact checks.** The verification tarball packs 28 files including `src/metrics-cache.js`, `test/metrics-cache.test.js`, `benchmark/session-compare.js` and `benchmark/session-last-run.json`. All 28 packed files were compared byte-for-byte with the repository (0 mismatches). All six `exports` specifiers resolve to files present in the archive. A scan for private absolute paths, credentials, evidence directories, logs, `node_modules`, `.git` and control state returned 0 hits; `control/index.html` is the shipped local UI page, not control state. Exact file count, size and checksums are recorded in the GitHub release notes rather than here, because this document is itself inside the archive and would invalidate its own checksum. The final release tarball is rebuilt once this document is final; its runtime files are identical to the verification tarball.
+
+**Web session-scope evidence for 0.4.0.** `research/host-preset-replay.mjs` was extended to check both config-level switches against the three real Host `agentPresets/read` compositions captured during the 0.2.0 Chrome run (§4). Verdict `PASS`: `leet-comparison-off` resolves to the official `ToolResultPruner`; `leet-comparison-linear` / `leet-comparison-fast` resolve to `LeetAccelerator` with the expected `enabled` / `fastLength` values and both `shortCircuit: true` and `sessionMetrics: true` inherited from the provider default. No Host-read preset row contains either key. The `shortCircuit: false`, `sessionMetrics: false` and both-off variants of the linear row, plus all three original rows, produce byte-identical `pruneContent` output to official on a 14000-code-point mixed-Unicode result and return `null` on the within-budget and exact-boundary cases. This is offline replay of real Host configuration data, **not** a Chrome run and **not** a model result.
+
+**Not done for 0.4.0.** No real-Chrome button / reload / wire pass (webserver startup still hangs in this sandbox, §10); the Web layer is byte-identical to `v0.2.0`. No real-model before/after comparison (§7, HTTP 402 unchanged; no new request was sent). No runtime probe of `toolResultPruner` inside a live agent session. `sessionMetrics` has no Web button and no real-task evidence.
+
+## 12. Reproducible commands
 
 ```sh
 # From the plugin directory. Pin Node v24.16.0 for comparable benchmark data.
 npm ci
-npm test                   # 18 tests, eight switch combinations
-npm run benchmark          # rewrites benchmark/last-run.json (8 cases x 6 variants)
-node research/candidate-round2.mjs   # shortCircuit now shipped; reuseMeasure research-only
-node research/host-preset-replay.mjs # reproducible session-scope replay (see §10)
-npm pack                   # produces dsh-leet-accelerator-0.3.0.tgz
+npm test                    # 26 tests, sixteen switch combinations
+npm run benchmark           # rewrites benchmark/last-run.json (8 cases x 6 variants)
+npm run benchmark:session   # rewrites benchmark/session-last-run.json (8 x 6 + scan audit)
+node research/candidate-round2.mjs      # shortCircuit shipped; reuseMeasure research-only
+node research/host-preset-replay.mjs    # reproducible session-scope replay (see §11)
+npm pack                    # produces dsh-leet-accelerator-0.4.0.tgz
 
 # Clean install into an isolated DSH_HOME (pnpm must be on PATH).
 # Pin storeDir in the profile's pnpm-workspace.yaml BEFORE add; do not change
 # it until after remove, otherwise pnpm refuses to remove with a store mismatch.
-dsh plugin --profile clean-web add ./dsh-leet-accelerator-0.3.0.tgz
+dsh plugin --profile clean-web add ./dsh-leet-accelerator-0.4.0.tgz
 dsh --profile clean-web --dump-config
-dsh --profile clean-web --patch /path/to/probe-v030.patch.yml   # runtime-load probe
+dsh --profile clean-web --patch /path/to/probe-v040.patch.yml   # runtime-load probe
 dsh plugin --profile clean-web remove dsh-leet-accelerator
 
 # Real Web Host (isolated DSH_HOME, loopback only). Use the DSH 0.2.2-rc.1
@@ -179,4 +212,4 @@ dsh --profile YOUR_WEB_PROFILE --port 3188 --no-open
 # then open the printed URL in Chrome and select a Leet comparison preset
 ```
 
-`research/host-preset-replay.mjs` is in the repository and published in the tarball, so the §10 session-scope replay is reproducible. The `--patch` runtime probe and the Chrome browser scripts are local harness files kept outside the repository. No token, credential or private path is recorded here.
+`research/host-preset-replay.mjs` is in the repository and published in the tarball, so the §11 session-scope replay is reproducible. The `--patch` runtime probe and the Chrome browser scripts are local harness files kept outside the repository. No token, credential or private path is recorded here.
