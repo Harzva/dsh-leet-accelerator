@@ -27,14 +27,14 @@ All six export specifiers resolve correctly from an installed profile, including
 
 ## 3. Local tests and benchmarks
 
-`npm test` → **17 passing, 0 failing**.
+As of 0.3.0, `npm test` → **18 passing, 0 failing** on Node `v24.16.0`.
 
-- `test/parity.test.js`: all four `enabled × fastLength` combinations compared with the official `0.2.2-rc.1` implementation; threshold boundaries; 300 seeded random multi-block Unicode cases; isolated high/low surrogates in separate blocks; surrogate pairs at the front/end of a block; ZWJ sequences, combining marks, BOM, NUL; odd head/tail budgets; invalid configs; and complete `pruneSession` parity (shadow-price event, replacement metadata, source seqs, repeated prune, replay, derived messages). A dedicated test calls `ToolResultPruner.prototype.measureContent/pruneContent` directly on an `enabled:false` instance to show the off branch delegates to the official algorithm.
-- `test/web-presets.test.js`: preset derivation, fail-closed behavior, rollback on collision, lifecycle wording, and **client-side unit tests** with a fake React and fake slot registry (state machine, envelope handling, dependency, disabled states, keyboard/ARIA attributes, failure text). These are unit tests, not browser or session-scope proof.
+- `test/parity.test.js`: all eight `enabled × fastLength × shortCircuit` combinations compared with the official `0.2.2-rc.1` implementation; threshold boundaries; 300 seeded random multi-block Unicode cases; isolated high/low surrogates in separate blocks; surrogate pairs at the front/end of a block; ZWJ sequences, combining marks, BOM, NUL; odd head/tail budgets; invalid configs; a dedicated `shortCircuit` upper-bound test at 49/50/51 UTF-16 units with ASCII, CJK, emoji pairs and lone surrogates; and complete `pruneSession` parity (shadow-price event, replacement metadata, source seqs, repeated prune, replay, derived messages). A dedicated test calls `ToolResultPruner.prototype.measureContent/pruneContent` directly on an `enabled:false` instance to show the off branch delegates to the official algorithm.
+- `test/web-presets.test.js`: preset derivation, fail-closed behavior, rollback on collision, idempotent disposal, lifecycle wording, and **client-side unit tests** with a fake React and fake slot registry (state machine, envelope handling, dependency, disabled states, keyboard/ARIA attributes, failure text). These are unit tests, not browser or session-scope proof.
 - `test/control.test.js`: local overlay writer.
-- `npm run benchmark` → `benchmark/last-run.json`: six input classes × four variants, 12 warmups, 60 alternating samples each, P50/P95/min/max. Results and the noisy-P95 caveat are in `README.md` / `README.zh.md`.
+- `npm run benchmark` → `benchmark/last-run.json`: eight input classes × six variants, 12 warmups, 60 alternating samples each, P50/P95/min/max. Three cases are within budget (where `shortCircuit` applies) and five are over budget. Full P50 and P95 tables and the noisy-P95 caveat are in `README.md` / `README.zh.md`. Node `v24.16.0` was pinned explicitly; an earlier accidental run on the system Node `v22.22.2` was discarded as not comparable.
 
-## 4. Real Web Host (isolated, DSH 0.2.2-rc.1)
+## 4. Real Web Host — 0.2.0 run (isolated, DSH 0.2.2-rc.1)
 
 Started with an isolated `DSH_HOME` and the `dsh-web-app` profile, on a loopback port. One non-required `schedule` entry failed to activate because the host environment's file-broker shim returned `EPIPE`; the Web Host itself started and served the UI. This is an environment artifact, not a plugin failure.
 
@@ -53,7 +53,7 @@ Verified over HTTP:
 
 **Boundary of this check:** the `toolResultPruner` instance was not read from inside a running session process. A real model session could not be started (see §7), so the evidence chain is: real `select` calls → Host-registered preset compositions → instantiated provider classes and outputs. That is stronger than a bundle-config check but is not a runtime probe inside a live agent.
 
-## 5. Real browser interaction (Chrome, real Web Host)
+## 5. Real browser interaction — 0.2.0 run (Chrome, real Web Host)
 
 Driven with a real Chrome browser against the isolated Host. No mocks, no simulated React.
 
@@ -69,7 +69,9 @@ Driven with a real Chrome browser against the isolated Host. No mocks, no simula
 
 **Not verified in a live session:** switching on an already-started session. Creating one requires a model request, which is blocked (§7). The restriction is enforced upstream (`agent-preset/locked`, "This session has already started") and on the client (`session.blank`), and the disabled/started state is covered by client unit tests. No claim of instant switching on running sessions is made.
 
-## 6. Clean-install check (final tarball)
+## 6. Clean-install check (0.2.0 release tarball)
+
+*This section records the 0.2.0 release artifact and the browser checks built on it. The 0.3.0 install/runtime/uninstall re-verification is in §10.*
 
 - `npm pack` produced `dsh-leet-accelerator-0.2.0.tgz`. Its exact file count, size and SHA-1 are recorded in the GitHub release notes rather than here: this document is itself inside the archive, so a checksum written into it would be stale the moment the archive is rebuilt. Contents contain no `node_modules`, credentials, private home, logs, control state files, chat data or evidence directory. `VERIFICATION.md` is included in `files` and in the tarball.
 - Installed that exact tarball with `dsh plugin --profile <clean profile> add <tarball>` into a **fresh, empty** `DSH_HOME`. It initialized the profile, added the dependency, and appended the bundle to `dsh.profile.bundles`. No `prepare` script and no `allowBuilds` allowlist were needed, confirming the pure-JS no-build path. The profile's `pnpm-workspace.yaml` / `.npmrc` pinned `storeDir` to this task's own cache directory **before** installation, and `.modules.yaml` confirms that store was used.
@@ -89,23 +91,26 @@ The single real request previously attempted returned **HTTP 402 / `QUOTA: Insuf
 
 What is needed: restore balance on the **DeepSeek API model entry used by this profile** (the `llm-deepseek` provider reads the key from `DEEPSEEK_API_KEY`). Once usable, the pending work is: for each actually-enabled optimization, alternating on/off runs with a fixed task, input, model, permissions and environment; record pruner invocation evidence, correctness, model/tool call counts, token usage (unknown if the provider omits it), algorithm-local time and end-to-end time; report sample size, median, P95 and variance; and report honestly if overall time does not improve or an input class regresses.
 
-Consequences: `fastLength` remains an **experimental, default-off candidate** with no real-task evidence, and neither optimization has an end-to-end task speedup claim.
+Consequences: `fastLength` remains an **experimental, default-off candidate** with no real-task evidence. None of the three config switches — including the default-on `shortCircuit` — has an end-to-end task speedup claim; the only measurements are algorithm-local (§3, §10).
 
 ## 8. Open items and known risks
 
-- No real-model before/after comparison (§7).
-- No runtime probe of `toolResultPruner` inside a live session; no real already-started session was exercised (§4, §5).
-- Clean-profile runtime-load probe and `dsh plugin remove` uninstall are now complete and passed (§6); the earlier pnpm `storeDir` mismatch is a resolved test-harness issue, not a plugin defect.
-- Starting web-app for the first time in a brand-new `DSH_HOME` hangs in this sandbox; using an already initialized isolated home works (§6). Web buttons/restart/session scope have now also been repeated on a tarball-installed Host.
-- `fastLength` regresses on emoji-heavy and multi-block local inputs (-5.5% to -12.3% P50 vs linear).
+- No real-model before/after comparison (§7). Still blocked by HTTP 402; no new request was sent for 0.3.0.
+- No runtime probe of `toolResultPruner` inside a live **agent session**; no real already-started session was exercised (§4, §5). The 0.3.0 runtime probe runs in a real DSH process but at profile startup, not inside a running session.
+- Clean-profile runtime-load probe and `dsh plugin remove` uninstall passed for both 0.2.0 (§6) and 0.3.0 (§10); the earlier pnpm `storeDir` mismatch is a resolved test-harness issue, not a plugin defect.
+- **0.3.0 did not repeat the real-Chrome button/reload/wire checks.** Webserver startup hangs in this sandbox after a correct `--dump-config`, across launchers, HOMEs, ports and Node versions (§10). The Web layer is byte-identical to `v0.2.0`, so §4–§6 still describe the applicable browser evidence, but no 0.3.0 browser pass is claimed.
+- A repeat `dsh plugin add` of the final tarball stalled at pnpm installation in this sandbox; only the byte-identical verification tarball completed the full install / runtime / uninstall cycle (§10).
+- The default global `dsh` symlink now targets toolchain `0.1.1-rc.2`; using it against a 0.2.x profile fails with the `standard` preset error and can rewrite the profile's `@deepseek-ai/*` dependencies. Use the pinned DSH `0.2.2-rc.1` launcher when reproducing.
+- `fastLength` remains an unvalidated, default-off candidate: no measurable gain on emoji-heavy, mixed or multi-block inputs in the latest run (−1.2% to +0.3% P50 vs linear), versus −5.5% to −12.3% in the 0.2.0 run. Cross-run variance is large.
+- `shortCircuit` only helps content already within `thresholdChars`; over-budget tool results still take the full scan.
 - Derived preset ids can break historical session recovery after uninstall; documented in both READMEs and in the preset descriptions. Switch affected sessions back to `standard` before uninstalling.
 - Only DSH `0.2.2-rc.1` was verified; other versions inside the declared `>=0.2.2-rc.1 <0.3.0` range are untested.
-- Local P95 is noisy (one official large-mixed sample reached 179.9 ms); 60 samples per variant is a small sample.
+- Local P95 and max are noisy (official `large-cjk` P95 17.0 ms / max 26.4 ms in the 0.3.0 run); 60 samples per variant is a small sample.
 - The top-level bundle patch does not control Web sessions' isolated compaction groups.
-- The Host's `schedule` entry failed to activate in this environment due to the file-broker shim; unrelated to the plugin but worth noting when reproducing.
+- The Host's `schedule` / `session-projection-cache` entries fail to activate in this environment due to the file-broker shim; unrelated to the plugin but worth noting when reproducing.
 - Not listed in any concrete DSH plugin market index.
 
-## 9. Round-2 candidate study (research only, not shipped in 0.2.0)
+## 9. Round-2 candidate study (shortCircuit shipped in 0.3.0; reuseMeasure still research-only)
 
 After the 0.2.0 release, two further algorithm candidates were measured with `research/candidate-round2.mjs` (results in `research/candidate-round2-results.json`). Every variant was checked byte-for-byte against the official `pruneContent`, and `pruneSession` results plus derived messages were checked against the shipping implementation. Node v24.16.0 / darwin/arm64, 10 warmups, 60 alternating samples, P50 milliseconds.
 
@@ -123,29 +128,55 @@ After the 0.2.0 release, two further algorithm candidates were measured with `re
 - **reuseMeasure (session-scoped measurement reuse):** upstream `pruneSession` measures the same content array twice (once as `pruneContent`'s total, once as `charsBefore`). A `WeakMap` local to one `pruneSession` call, keyed by array identity, can return the value already computed. It helps large sessions but adds a small cost to short ones (-3.3% P50) and **depends on the content array not being mutated inside the call stack**. That precondition is a real design constraint, not a formality.
 - Combining both is not additive on short sessions (-4.6% P50) and sometimes has worse P95 than `reuseMeasure` alone.
 
-**Status: neither candidate is in the shipped `src/index.js`, in any preset, in any Web button, or in the 0.2.0 tarball.** They are research results, not adopted optimizations, so no independent switch, Web control or release claim exists for them yet. They also carry no real-model evidence (§7). P95 is noisy on this machine and 60 samples is a small sample.
+**Status in 0.2.0:** neither candidate was in the shipped `src/index.js`, in any preset, in any Web button, or in the 0.2.0 tarball.
 
-## 10. Reproducible commands
+**Status in 0.3.0:** `shortCircuit` was adopted as a third independent config switch (default `true`) in `src/index.js`, using the upper-bound check described above. It deliberately adds **no preset id and no Web button**: Web sessions inherit it through the provider default, so session-log compatibility with 0.2.0 is preserved. `reuseMeasure` remains research-only because its immutability precondition and short-session regression are unresolved. Neither candidate carries real-model evidence (§7). The research table above predates adoption; the shipped implementation is covered by the eight-state parity tests and the eight-case benchmark (§3) and by the runtime probe (§11). P95 is noisy on this machine and 60 samples is a small sample.
+
+## 10. 0.3.0 change and re-verification
+
+**What actually changed.** The only runtime edit is in `src/index.js`: a third config switch `shortCircuit` (default `true`) and an upper-bound check at the top of `pruneContent`. `cordis.patch.yml`, `src/web-presets.js` and `src/client/index.js` are **byte-identical to the `v0.2.0` tag**; `package.json` differs only in `version` (0.2.0 → 0.3.0). No preset id, no Web button and no client-manifest entry was added. Web sessions inherit `shortCircuit: true` from the provider default, so 0.2.0 session logs keep resolving.
+
+**Tests and benchmark.** `npm test` on Node `v24.16.0` → 18/18, covering all eight switch combinations and a dedicated UTF-16/code-point boundary case (§3). `benchmark/compare.js` was extended to eight cases × six variants and re-run on the pinned Node 24. Within-budget inputs: `linear+short` P50 is 97.1–99.1% below `linear` and 99.1–99.6% below official. Over-budget inputs: −0.1% to +0.7% versus `linear` (noise), still 80.1–85.5% below official. `off` tracks `official` in every case. P95 and max remain noisy; 60 samples is a small sample. `fastLength` shows no measurable gain on emoji/mixed/multi-block inputs in this run (−1.2% to +0.3%), whereas the 0.2.0 run measured −5.5% to −12.3% on the same input classes; the official baselines differ roughly 2× between runs, so cross-run variance is large and `fastLength` stays a default-off, unvalidated candidate.
+
+**Clean tarball install / runtime / uninstall (0.3.0).** A fresh isolated `DSH_HOME` (`clean-home-6`) and profile `v030` were created with `storeDir` pinned in `pnpm-workspace.yaml` / `.npmrc` **before** installing. `dsh plugin add` installed `dsh-leet-accelerator 0.3.0` with no `prepare` script and no `allowBuilds` permission. `--dump-config` shows `@deepseek-ai/dsh-base, patched by dsh-leet-accelerator` (official pruner row disabled in that scope), the `dsh-leet-accelerator` layer with `enabled: true`, and `leet-web-presets`. A `--patch` runtime probe executed *inside* that clean DSH 0.2.2-rc.1 process and printed:
+
+```
+LEET_PROBE_V030 service=LeetAccelerator enabled=true shortCircuit=true short=both-null long=5159 longParity=identical
+```
+
+That probe instantiates the installed package's real service, confirms the default `shortCircuit: true`, toggles it off on the same instance, and checks that a within-budget input returns `null` either way, an over-budget result is still 5159 characters (unchanged from 0.2.0), and the two long outputs are byte-identical. `dsh plugin remove` then removed the dependency, bundle and directory; `--dump-config` afterwards shows the official `@deepseek-ai/dsh-compaction-tool-result-pruner` row enabled again with no `disabled:` marker. The packed files were compared byte-for-byte with the repository sources; the only files present in the repository but absent from the tarball are `.gitignore`, the local `control/accelerator.patch.json`, and `package-lock.json` (npm excludes the lockfile by default).
+
+**Final release artifact.** After the last documentation fixes the release tarball was rebuilt and compared byte-for-byte with the repository; it packs 24 files and contains no credentials, logs, private paths, control state or evidence files. Compared with the verification tarball used above, the only differences are the three documentation files plus the new reproducible `research/host-preset-replay.mjs`; every runtime-relevant file (`src/index.js`, `src/web-presets.js`, `src/client/index.js`, `cordis.patch.yml`, `package.json`, `icon.svg`, `control-server.js`) is byte-identical. A repeat `dsh plugin add` of the final tarball into two additional clean profiles stalled at pnpm installation in this sandbox — the same environment degradation that blocks webserver startup — so the final tarball was **not** re-installed end-to-end. No pass is claimed for that step; the install / runtime / uninstall cycle above used byte-identical runtime files. Artifact checksums are recorded in the GitHub release notes, not in this file, because this document is itself inside the archive.
+
+**Web session-scope evidence for 0.3.0.** The three real Host `agentPresets/read` compositions captured during the 0.2.0 Chrome run (§4) were replayed offline against the current 0.3.0 `src/index.js`. `leet-comparison-off` resolves to the official `ToolResultPruner`; `leet-comparison-linear` and `leet-comparison-fast` resolve to `LeetAccelerator` with the expected `enabled` / `fastLength` values and `shortCircuit: true` inherited from the default. The pruner row in the Host-read preset contains **no `shortCircuit` key**, confirming the default-inheritance design. All three — plus an explicit `shortCircuit: false` variant of the linear row — produce byte-identical `pruneContent` output to the official implementation on a 14000-code-point mixed-Unicode tool result, and all return `null` on a 4096-unit ASCII input and on the exact 8192-UTF-16-unit / 4096-code-point emoji boundary. Verdict `PASS`. This replay is reproducible with `node research/host-preset-replay.mjs`; the transcribed rows are configuration data read from a real Host, not a simulated model result.
+
+**Web Host re-run was blocked by the environment — no new Chrome run for 0.3.0.** The default `dsh` launcher on this machine is now a symlink to toolchain `0.1.1-rc.2` (it pointed at the 0.2.x toolchain during the 0.2.0 verification). Starting through it fails with `Leet comparison requires the current standard preset definition` and rewrites the test profile's `@deepseek-ai/*` dependencies to 0.1.1-rc.2. Using the correct `dsh-runtime/node_modules/.bin/dsh` (DSH `0.2.2-rc.1`) with a new isolated HOME and a fresh web-app profile works for `--dump-config` (1257 lines, including `web-startup` / `webserver` with `printUrl: true` and port config), but the **webserver startup stage silently hangs**: no stdout/stderr, no loopback listener, no home initialization files. This reproduced across the old and new launchers, two `DSH_HOME`s, two ports, with and without `--no-open`, and on Node 22 and Node 24. The same sandbox's file-broker shim also produces `EPIPE` warnings for storage initialization in the headless probe. So **0.3.0 did not repeat the real-browser click / reload / wire-capture checks**; §4–§6 remain the 0.2.0 evidence and are still applicable because the entire Web layer is byte-identical. The new algorithm behaviour is covered instead by the clean-profile runtime probe, the Host-preset replay, and the 18 local tests. This is an environment limitation, not a claimed pass.
+
+**Real model task.** Still blocked by the single HTTP 402 / `QUOTA: Insufficient Balance` (§7). No further request was sent and no before/after result is claimed for `shortCircuit` or any other switch.
+
+## 11. Reproducible commands
 
 ```sh
-# From the plugin directory
+# From the plugin directory. Pin Node v24.16.0 for comparable benchmark data.
 npm ci
-npm test
-npm run benchmark          # rewrites benchmark/last-run.json
-node research/candidate-round2.mjs   # research-only candidates, not shipped
-npm pack                   # produces the reviewed tarball
+npm test                   # 18 tests, eight switch combinations
+npm run benchmark          # rewrites benchmark/last-run.json (8 cases x 6 variants)
+node research/candidate-round2.mjs   # shortCircuit now shipped; reuseMeasure research-only
+node research/host-preset-replay.mjs # reproducible session-scope replay (see §10)
+npm pack                   # produces dsh-leet-accelerator-0.3.0.tgz
 
 # Clean install into an isolated DSH_HOME (pnpm must be on PATH).
 # Pin storeDir in the profile's pnpm-workspace.yaml BEFORE add; do not change
 # it until after remove, otherwise pnpm refuses to remove with a store mismatch.
-dsh plugin --profile clean-web add ./dsh-leet-accelerator-0.2.0.tgz
+dsh plugin --profile clean-web add ./dsh-leet-accelerator-0.3.0.tgz
 dsh --profile clean-web --dump-config
-dsh --profile clean-web --patch /path/to/probe.patch.yml   # runtime-load probe
+dsh --profile clean-web --patch /path/to/probe-v030.patch.yml   # runtime-load probe
 dsh plugin --profile clean-web remove dsh-leet-accelerator
 
-# Real Web Host (isolated DSH_HOME, loopback only)
+# Real Web Host (isolated DSH_HOME, loopback only). Use the DSH 0.2.2-rc.1
+# launcher, not an older global `dsh` symlink; see the startup caveat in §10.
 dsh --profile YOUR_WEB_PROFILE --port 3188 --no-open
 # then open the printed URL in Chrome and select a Leet comparison preset
 ```
 
-Browser checks used a local Chrome plus `playwright-core`; scripts were kept outside the repository and are not part of the published package. No token, credential or private path is recorded here.
+`research/host-preset-replay.mjs` is in the repository and published in the tarball, so the §10 session-scope replay is reproducible. The `--patch` runtime probe and the Chrome browser scripts are local harness files kept outside the repository. No token, credential or private path is recorded here.

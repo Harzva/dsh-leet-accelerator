@@ -17,23 +17,30 @@ function createService(Class, config) {
 
 const config = { thresholdChars: 50, headChars: 4, tailChars: 3 };
 
-// The four independent switch combinations, plus the untouched upstream
-// implementation as the reference. `off/fast-ignored` is deliberately present:
-// fastLength must be a no-op while the whole optimization is off.
-const SWITCHES = [
-  { name: 'official', original: true },
-  { name: 'off/plain', enabled: false, fastLength: false },
-  { name: 'off/fast-ignored', enabled: false, fastLength: true },
-  { name: 'on/linear', enabled: true, fastLength: false },
-  { name: 'on/fast', enabled: true, fastLength: true },
-];
+// All eight independent switch combinations (enabled x fastLength x
+// shortCircuit), plus the untouched upstream implementation as the reference.
+// The `off/...` rows deliberately keep the other switches set: they must be
+// no-ops while the whole optimization is off.
+const SWITCHES = [{ name: 'official', original: true }];
+for (const enabled of [false, true]) {
+  for (const fastLength of [false, true]) {
+    for (const shortCircuit of [false, true]) {
+      SWITCHES.push({
+        name: `${enabled ? 'on' : 'off'}/${fastLength ? 'fast' : 'linear'}/${shortCircuit ? 'short' : 'full'}`,
+        enabled, fastLength, shortCircuit,
+      });
+    }
+  }
+}
 
 function implementations(options = config) {
   return SWITCHES.map(sw => ({
     ...sw,
     service: sw.original
       ? createService(Original, options)
-      : createService(LeetAccelerator, { ...options, enabled: sw.enabled, fastLength: sw.fastLength }),
+      : createService(LeetAccelerator, {
+        ...options, enabled: sw.enabled, fastLength: sw.fastLength, shortCircuit: sw.shortCircuit,
+      }),
   }));
 }
 
@@ -50,13 +57,17 @@ function compare(blocks, options = config) {
 }
 
 test('every switch combination exposes its own state', () => {
-  for (const { name, original, enabled, fastLength, service } of implementations()) {
+  for (const { name, original, enabled, fastLength, shortCircuit, service } of implementations()) {
     if (original) continue;
     assert.equal(service.enabled, enabled, name);
     assert.equal(service.fastLength, fastLength, name);
+    assert.equal(service.shortCircuit, shortCircuit, name);
   }
+  assert.equal(createService(LeetAccelerator, { ...config, enabled: true }).shortCircuit, true,
+    'shortCircuit defaults to on');
   assert.throws(() => createService(LeetAccelerator, { ...config, enabled: 'true' }));
   assert.throws(() => createService(LeetAccelerator, { ...config, fastLength: 1 }));
+  assert.throws(() => createService(LeetAccelerator, { ...config, shortCircuit: 'yes' }));
 });
 
 test('the off position delegates to the official algorithm even when fastLength is set', () => {
@@ -72,7 +83,7 @@ test('the off position delegates to the official algorithm even when fastLength 
   }
 });
 
-test('threshold boundaries, non-text ordering, surrogate pairs and unpaired surrogates match upstream in all four combinations', () => {
+test('threshold boundaries, non-text ordering, surrogate pairs and unpaired surrogates match upstream in all eight combinations', () => {
   for (const length of [0, 1, 49, 50, 51, 52, 100]) {
     for (const unit of ['a', '中', '😀', '\ud800', '\udc00', 'e\u0301']) {
       compare([{ type: 'text', text: unit.repeat(length) }]);
@@ -116,7 +127,41 @@ test('fastLength probe and paired-boundary lookup agree at Unicode edge cases', 
   }
 });
 
-test('seeded random multi-block content matches upstream in all four combinations', () => {
+test('shortCircuit upper bound is exact at the UTF-16 / code-point boundary', () => {
+  const on = createService(LeetAccelerator, { ...config, enabled: true, shortCircuit: true });
+  const off = createService(LeetAccelerator, { ...config, enabled: true, shortCircuit: false });
+  const official = createService(Original, config);
+  // threshold is 50. A code point is 1 or 2 UTF-16 units, so `units <= 50`
+  // proves the code-point total is within budget; `units > 50` proves nothing
+  // and must fall through to the exact scan. Exercise both sides, including
+  // lone surrogates (1 unit, 1 code point) and non-text blocks (0 points).
+  const cases = [
+    'a'.repeat(49), 'a'.repeat(50), 'a'.repeat(51),
+    '中'.repeat(50), '中'.repeat(51),
+    '😀'.repeat(24), '😀'.repeat(25), '😀'.repeat(26), '😀'.repeat(50), '😀'.repeat(51),
+    '\ud800'.repeat(50), '\ud800'.repeat(51), '\udc00'.repeat(51),
+    'a\ud800b\udc00'.repeat(13),
+  ];
+  for (const text of cases) {
+    for (const blocks of [
+      [{ type: 'text', text }],
+      [{ type: 'reasoning', text: 'ignored' }, { type: 'text', text }, { type: 'image', attachment: { mediaType: 'image/png', bytes: 2 } }],
+      [{ type: 'text', text: text.slice(0, 20) }, { type: 'text', text: text.slice(20) }],
+    ]) {
+      const expected = official.pruneContent(blocks);
+      assert.deepEqual(on.pruneContent(blocks), expected, 'shortCircuit on');
+      assert.deepEqual(off.pruneContent(blocks), expected, 'shortCircuit off');
+      // The short-circuit only decides whether to prune; measurement stays exact.
+      assert.equal(on.measureContent(blocks), official.measureContent(blocks));
+    }
+  }
+  // With the whole optimization off, shortCircuit must not change anything.
+  const disabled = createService(LeetAccelerator, { ...config, enabled: false, shortCircuit: true });
+  assert.deepEqual(disabled.pruneContent([{ type: 'text', text: 'a'.repeat(20) }]),
+    ToolResultPruner.prototype.pruneContent.call(disabled, [{ type: 'text', text: 'a'.repeat(20) }]));
+});
+
+test('seeded random multi-block content matches upstream in all eight combinations', () => {
   let state = 0x97cd47;
   const random = max => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) % max; };
   const atoms = ['A', '界', '😀', '👩‍💻', '\ud800', '\udc00', '\n', '\u0301'];
@@ -130,12 +175,14 @@ test('seeded random multi-block content matches upstream in all four combination
   }
 });
 
-test('invalid upstream configuration fails in all four combinations', () => {
+test('invalid upstream configuration fails in all eight combinations', () => {
   for (const invalid of [{ thresholdChars: 0 }, { headChars: -1 }, { tailChars: 1.5 }, { thresholdChars: 50, headChars: 20, tailChars: 20 }, { threshold: 10 }]) {
     assert.throws(() => createService(Original, invalid));
     for (const sw of SWITCHES) {
       if (sw.original) continue;
-      assert.throws(() => createService(LeetAccelerator, { ...invalid, enabled: sw.enabled, fastLength: sw.fastLength }), sw.name);
+      assert.throws(() => createService(LeetAccelerator, {
+        ...invalid, enabled: sw.enabled, fastLength: sw.fastLength, shortCircuit: sw.shortCircuit,
+      }), sw.name);
     }
   }
 });
@@ -153,7 +200,7 @@ function sessionWithToolResult() {
   return { session, originalSeq: result.seq };
 }
 
-test('session receipt, shadow-price event, replay and repeated prune agree with upstream in all four combinations', () => {
+test('session receipt, shadow-price event, replay and repeated prune agree with upstream in all eight combinations', () => {
   const initial = sessionWithToolResult();
   const seed = initial.session.snapshotEvents();
   const impls = implementations();

@@ -12,11 +12,20 @@ const config = { thresholdChars: 8192, headChars: 4096, tailChars: 1024 };
 const variants = [
   { name: 'official', service: new Original(new Context(), config) },
   { name: 'off', service: new LeetAccelerator(new Context(), { ...config, enabled: false, fastLength: false }) },
-  { name: 'linear', service: new LeetAccelerator(new Context(), { ...config, enabled: true, fastLength: false }) },
-  { name: 'linear+fast', service: new LeetAccelerator(new Context(), { ...config, enabled: true, fastLength: true }) },
+  { name: 'linear', service: new LeetAccelerator(new Context(), { ...config, enabled: true, fastLength: false, shortCircuit: false }) },
+  { name: 'linear+short', service: new LeetAccelerator(new Context(), { ...config, enabled: true, fastLength: false, shortCircuit: true }) },
+  { name: 'fast', service: new LeetAccelerator(new Context(), { ...config, enabled: true, fastLength: true, shortCircuit: false }) },
+  { name: 'fast+short', service: new LeetAccelerator(new Context(), { ...config, enabled: true, fastLength: true, shortCircuit: true }) },
 ];
 const cases = [
+  // Within-budget inputs (threshold is 8192): the common path in a real
+  // session, where most tool results do not need pruning. shortCircuit can
+  // skip the Unicode scan entirely. The emoji case is exactly 8192 UTF-16
+  // units but only 4096 code points, so it sits on the upper-bound boundary.
   { name: 'short-ascii', blocks: [{ type: 'text', text: 'a'.repeat(4096) }] },
+  { name: 'within-8k-ascii', blocks: [{ type: 'text', text: 'a'.repeat(8192) }] },
+  { name: 'within-4k-emoji', blocks: [{ type: 'text', text: '😀'.repeat(4096) }] },
+  // Over-budget inputs: the exact head/tail pruning path.
   { name: 'large-ascii', blocks: [{ type: 'text', text: 'a'.repeat(300_000) }] },
   { name: 'large-cjk', blocks: [{ type: 'text', text: '中'.repeat(300_000) }] },
   { name: 'large-emoji', blocks: [{ type: 'text', text: '😀'.repeat(150_000) }] },

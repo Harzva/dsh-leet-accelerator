@@ -74,18 +74,21 @@ export class LeetAccelerator extends ToolResultPruner {
   static Config = z.object({
     enabled: z.boolean().default(false),
     fastLength: z.boolean().default(false),
+    shortCircuit: z.boolean().default(true),
     thresholdChars: z.number().step(1).min(1).default(DEFAULTS.thresholdChars),
     headChars: z.number().step(1).min(0).default(DEFAULTS.headChars),
     tailChars: z.number().step(1).min(0).default(DEFAULTS.tailChars),
   });
 
   constructor(ctx, options = {}) {
-    const { enabled = false, fastLength = false, ...upstreamOptions } = options;
+    const { enabled = false, fastLength = false, shortCircuit = true, ...upstreamOptions } = options;
     if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean');
     if (typeof fastLength !== 'boolean') throw new TypeError('fastLength must be a boolean');
+    if (typeof shortCircuit !== 'boolean') throw new TypeError('shortCircuit must be a boolean');
     super(ctx, upstreamOptions);
     this.enabled = enabled;
     this.fastLength = fastLength;
+    this.shortCircuit = shortCircuit;
   }
 
   measureContent(blocks) {
@@ -97,6 +100,19 @@ export class LeetAccelerator extends ToolResultPruner {
 
   pruneContent(blocks) {
     if (!this.enabled) return super.pruneContent(blocks);
+    // Every Unicode code point occupies one or two UTF-16 units, so the sum of
+    // text.length values is an upper bound on the code-point total. When that
+    // bound is already within budget, the exact count cannot exceed the
+    // threshold and the whole Unicode scan can be skipped. Most tool results
+    // are within budget, so this is the common path. `measureContent` still
+    // returns the exact count; only the "do we need to prune" decision short-
+    // circuits. A lone surrogate is one unit and one code point, so the bound
+    // holds for unpaired surrogates too.
+    if (this.shortCircuit) {
+      let units = 0;
+      for (const block of blocks) if (block.type === 'text') units += block.text.length;
+      if (units <= this.config.thresholdChars) return null;
+    }
     const analyzed = blocks.map(block => block.type === 'text'
       ? analyze(block.text, this.fastLength)
       : { length: 0, paired: false });

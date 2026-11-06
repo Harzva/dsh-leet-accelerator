@@ -1,6 +1,6 @@
 {
   "name": "dsh-leet-accelerator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Optional allocation-conscious tool-result pruning for DeepSeek Harness, with independent Web switches",
   "license": "MIT",
   "repository": {
