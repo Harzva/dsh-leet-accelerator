@@ -79,7 +79,9 @@ Driven with a real Chrome browser against the isolated Host. No mocks, no simula
 - `dsh plugin --profile <clean profile> remove dsh-leet-accelerator` succeeded. Afterwards the dependency is gone from `package.json`, the bundle is gone from `dsh.profile.bundles`, `node_modules/dsh-leet-accelerator` is removed, `dsh-leet-accelerator` no longer appears in `--dump-config`, and the official `@deepseek-ai/dsh-compaction-tool-result-pruner` row is **enabled again** (no `disabled: true`). Uninstall restores the official algorithm.
 - The installed `src/*.js`, `cordis.patch.yml` and `icon.svg` were compared byte-for-byte with the repository sources used by the Web Host in §4–§5; they are identical.
 - An earlier uninstall attempt failed because the test profile's `pnpm-workspace.yaml` `storeDir` was changed **after** installation; `.modules.yaml` still recorded the old store, so `pnpm remove` refused with `If you want to use the new store location, reinstall your dependencies with "pnpm install"`. This was a test-harness configuration error, not a plugin defect. It was fixed by creating a new profile with `storeDir` set before installation and re-running the whole add → dump-config → runtime probe → remove cycle. Do not change `storeDir` between install and remove.
-- A second full Web Host in a brand-new `DSH_HOME` with the tarball-installed plugin did **not** start: it produced no output and never bound its loopback port, so it was stopped. The Web UI / session-scope checks in §4–§5 were therefore performed on the linked-checkout Host, whose sources are byte-identical to the packed tarball. This is a limitation of booting a fresh web-app profile in this sandbox, not a failing plugin check; buttons and restart were not independently repeated against a tarball-installed Web Host.
+- Two more install sources were checked the same way: the GitHub tag `github:Harzva/dsh-leet-accelerator#v0.2.0` and the tarball downloaded from the public Release URL. Both installed with no build permission, produced byte-identical sources, passed the same runtime probe, and uninstalled cleanly. The downloaded asset's SHA-1 matches the locally verified artifact.
+- A Web Host backed by a **tarball-installed** profile was later started successfully in the same isolated (already initialized) `DSH_HOME`, as a fresh profile with the `@deepseek-ai/dsh-web-app` bundle. Real Chrome re-ran the full flow there: `standard` disables both buttons; `leet-comparison-off` unlocks linear only; linear on unlocks fast; fast on shows the experimental warning; turning linear off disables fast again; keyboard toggle, reload/restart state read-back and five real `agentPresets/select` calls all behaved as expected, with zero page/console errors. Host `agentPresets/read` again showed the official provider for `leet-comparison-off` and `dsh-leet-accelerator` with `enabled:true` / `fastLength:false` or `true` for the other two. That profile then uninstalled cleanly.
+- A brand-new `DSH_HOME` combined with a first-time web-app profile still hangs in this sandbox (the process creates its anonymous id, credentials and storages but never binds the loopback port). Starting web-app for the first time therefore needs an already initialized isolated home here; this is an environment artifact, not a plugin failure. Earlier in the workflow, §4–§5 used a linked-checkout Host whose sources are byte-identical to the packed tarball.
 
 ## 7. Real model task — blocked, no comparison exists
 
@@ -94,7 +96,7 @@ Consequences: `fastLength` remains an **experimental, default-off candidate** wi
 - No real-model before/after comparison (§7).
 - No runtime probe of `toolResultPruner` inside a live session; no real already-started session was exercised (§4, §5).
 - Clean-profile runtime-load probe and `dsh plugin remove` uninstall are now complete and passed (§6); the earlier pnpm `storeDir` mismatch is a resolved test-harness issue, not a plugin defect.
-- A second Web Host backed by a tarball-installed, brand-new web-app profile could not be started in this sandbox (§6), so Web buttons/restart were not independently repeated on a tarball-installed Host; the checked-out sources are byte-identical to the packed ones.
+- Starting web-app for the first time in a brand-new `DSH_HOME` hangs in this sandbox; using an already initialized isolated home works (§6). Web buttons/restart/session scope have now also been repeated on a tarball-installed Host.
 - `fastLength` regresses on emoji-heavy and multi-block local inputs (-5.5% to -12.3% P50 vs linear).
 - Derived preset ids can break historical session recovery after uninstall; documented in both READMEs and in the preset descriptions. Switch affected sessions back to `standard` before uninstalling.
 - Only DSH `0.2.2-rc.1` was verified; other versions inside the declared `>=0.2.2-rc.1 <0.3.0` range are untested.
@@ -103,13 +105,34 @@ Consequences: `fastLength` remains an **experimental, default-off candidate** wi
 - The Host's `schedule` entry failed to activate in this environment due to the file-broker shim; unrelated to the plugin but worth noting when reproducing.
 - Not listed in any concrete DSH plugin market index.
 
-## 9. Reproducible commands
+## 9. Round-2 candidate study (research only, not shipped in 0.2.0)
+
+After the 0.2.0 release, two further algorithm candidates were measured with `research/candidate-round2.mjs` (results in `research/candidate-round2-results.json`). Every variant was checked byte-for-byte against the official `pruneContent`, and `pruneSession` results plus derived messages were checked against the shipping implementation. Node v24.16.0 / darwin/arm64, 10 warmups, 60 alternating samples, P50 milliseconds.
+
+| Case | Shipping | +shortCircuit | +reuseMeasure | +both |
+|---|---:|---:|---:|---:|
+| `pruneContent` within 1k | 0.0026 | 0.0003 (**90.3%**) | 0.0026 | 0.0003 |
+| `pruneContent` within 8k ASCII | 0.0137 | 0.0002 (**98.5%**) | 0.0136 | 0.0002 |
+| `pruneContent` within 8k emoji | 0.0118 | 0.0002 (**98.6%**) | 0.0118 | 0.0002 |
+| `pruneContent` over 300k | 0.7109 | 0.7129 (-0.3%) | 0.7126 | 0.7065 |
+| `pruneSession` one short result | 0.0678 | 0.0666 | 0.0700 | 0.0708 |
+| `pruneSession` one large result | 1.2620 | 1.2305 | 0.7070 (**44.0%**) | 0.7137 |
+| `pruneSession` 8 mixed results | 1.6417 | 1.5862 | 0.9788 (**40.4%**) | 0.9934 |
+
+- **shortCircuit (upper-bound pruning):** the number of Unicode code points is never greater than the UTF-16 length, so if the sum of `text.length` over text blocks is at most `thresholdChars`, the content is definitely within budget and `pruneContent` can return `null` without scanning any text. Semantics are identical with no immutability assumption, and large over-budget inputs show no measurable regression (only a few extra `.length` reads). This is the more attractive candidate because most tool results are within budget.
+- **reuseMeasure (session-scoped measurement reuse):** upstream `pruneSession` measures the same content array twice (once as `pruneContent`'s total, once as `charsBefore`). A `WeakMap` local to one `pruneSession` call, keyed by array identity, can return the value already computed. It helps large sessions but adds a small cost to short ones (-3.3% P50) and **depends on the content array not being mutated inside the call stack**. That precondition is a real design constraint, not a formality.
+- Combining both is not additive on short sessions (-4.6% P50) and sometimes has worse P95 than `reuseMeasure` alone.
+
+**Status: neither candidate is in the shipped `src/index.js`, in any preset, in any Web button, or in the 0.2.0 tarball.** They are research results, not adopted optimizations, so no independent switch, Web control or release claim exists for them yet. They also carry no real-model evidence (§7). P95 is noisy on this machine and 60 samples is a small sample.
+
+## 10. Reproducible commands
 
 ```sh
 # From the plugin directory
 npm ci
 npm test
 npm run benchmark          # rewrites benchmark/last-run.json
+node research/candidate-round2.mjs   # research-only candidates, not shipped
 npm pack                   # produces the reviewed tarball
 
 # Clean install into an isolated DSH_HOME (pnpm must be on PATH).
