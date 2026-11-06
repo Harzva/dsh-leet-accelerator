@@ -1,0 +1,12 @@
+- id: tool-result-pruner
+  disabled: true
+- insert:
+    - id: dsh-leet-accelerator
+      name: dsh-leet-accelerator
+      config:
+        enabled: true
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+    - id: leet-web-presets
+      name: dsh-leet-accelerator/web-presets

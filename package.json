@@ -1,0 +1,30 @@
+{
+  "name": "dsh-leet-accelerator",
+  "version": "0.1.0",
+  "description": "Optional allocation-conscious tool-result pruning for DeepSeek Harness",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": { ".": "./src/index.js", "./web-presets": "./src/web-presets.js" },
+  "files": ["src", "control/index.html", "control-server.js", "cordis.patch.yml", "benchmark", "test", "README.md", "LICENSE"],
+  "engines": { "dsh": "0.2.2-rc.1", "node": ">=24.9.0" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "benchmark": "node benchmark/compare.js",
+    "control": "node control-server.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.2.2-rc.1",
+    "@deepseek-ai/schemastery": "~3.19.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-token-meter": "0.2.2-rc.1",
+    "@deepseek-ai/schemastery": "~3.19.0"
+  }
+}

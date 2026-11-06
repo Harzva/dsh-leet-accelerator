@@ -1,0 +1,7 @@
+node_modules/
+control/accelerator.patch.json
+*.log
+*.tgz
+.DS_Store
+tmp/
+.credentials*

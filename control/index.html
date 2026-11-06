@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leet Accelerator 控制台</title>
+<style>
+body { font: 16px/1.6 -apple-system,BlinkMacSystemFont,sans-serif; background:#f4f5f7; color:#1d2939; margin:0; }
+main { max-width:640px; margin:8vh auto; padding:28px; background:#fff; border:1px solid #e4e7ec; border-radius:12px; }
+h1 { font-size:24px; margin:0 0 6px; } p { margin: 12px 0; } button { cursor:pointer; border:1px solid #344054; border-radius:7px; background:white; color:#1d2939; padding:9px 18px; font:inherit; }
+button[aria-pressed="true"] { color:white; background:#344054; } button:disabled { opacity:.5; cursor:wait; }
+#status { margin:20px 0 10px; font-weight:600; } code { overflow-wrap:anywhere; } .hint { color:#475467; font-size:14px; }
+</style>
+<main>
+  <h1>Leet Accelerator</h1>
+  <p>工具结果裁剪算法：开启使用优化实现；关闭使用 DeepSeek Harness 原实现。</p>
+  <div id="status" role="status">正在读取本地配置…</div>
+  <button type="button" id="on" disabled aria-pressed="false">开启算法</button>
+  <button type="button" id="off" disabled aria-pressed="false">关闭算法</button>
+  <p class="hint">按钮仅保存本插件专用覆盖文件。重启兼容的 Harness，并在启动命令中加入下面的覆盖文件后才会生效。这里显示的是已保存配置，不是正在运行的会话状态。</p>
+  <p class="hint">支持已接入此插件的 base / headless 作用域；Web 会话预设不受此控制。覆盖文件使用阈值 8192、头部 4096、尾部 1024 字符。</p>
+  <p class="hint">覆盖文件：<code id="path"></code></p>
+</main>
+<script nonce="__NONCE__">
+const token = '__NONCE__';
+const status = document.querySelector('#status'), on = document.querySelector('#on'), off = document.querySelector('#off'), path = document.querySelector('#path');
+function show(data) {
+  status.textContent = '已保存配置：' + (data.enabled ? '开启' : '关闭') + '（下次启动时应用）';
+  path.textContent = data.overlay;
+  on.setAttribute('aria-pressed', String(data.enabled)); off.setAttribute('aria-pressed', String(!data.enabled));
+  on.disabled = false; off.disabled = false;
+}
+async function update(enabled) {
+  on.disabled = off.disabled = true;
+  try {
+    const response = await fetch('/state', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Control-Token':token }, body:JSON.stringify({enabled}) });
+    if (!response.ok) throw new Error('保存失败');
+    show(await response.json());
+  } catch { status.textContent = '保存失败；请检查控制台日志和覆盖文件。'; on.disabled = off.disabled = false; }
+}
+on.addEventListener('click', () => update(true)); off.addEventListener('click', () => update(false));
+fetch('/state').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(show).catch(() => { status.textContent = '无法读取配置；请检查覆盖文件并重启控制台。'; });
+</script>
+</html>
