@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +13,10 @@ const runRoot = tmpdir();
 test('local controller saves only its overlay and rejects invalid or missing state', { timeout: 15000 }, async t => {
   // The executable and page are copied byte-for-byte to a unique test-owned
   // root. No user profile or production overlay is opened or changed.
-  const root = mkdtempSync(join(runRoot, 'control-regression-'));
+  // Node resolves ESM entry paths to their realpath; on macOS tmpdir() is a
+  // /var -> /private/var symlink. Compare against the same canonical path so
+  // the controller's reported overlay matches regardless of TMPDIR.
+  const root = realpathSync(mkdtempSync(join(runRoot, 'control-regression-')));
   mkdirSync(join(root, 'control'));
   copyFileSync(join(sourceRoot, 'control-server.js'), join(root, 'control-server.mjs'));
   copyFileSync(join(sourceRoot, 'control', 'index.html'), join(root, 'control', 'index.html'));

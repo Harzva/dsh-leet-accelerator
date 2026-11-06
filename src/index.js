@@ -4,30 +4,49 @@ import { DEFAULTS, PRUNE_MARKER, ToolResultPruner } from '@deepseek-ai/dsh-compa
 // The block selection and validation follow DeepSeek Harness's
 // dsh-compaction-tool-result-pruner (MIT):
 // https://github.com/deepseek-ai/deepseek-harness
-// Count code points without allocating an array for the whole tool result.
-// A lone surrogate counts as one code point, matching the string iterator.
+// Both paths count Unicode code points without allocating an array for the
+// whole tool result. A lone surrogate counts as one code point, exactly as the
+// upstream string iterator does.
 const SURROGATE_PAIR = /[\uD800-\uDBFF][\uDC00-\uDFFF]/;
 
-function countPoints(text, fastLength) {
-  // Without a surrogate pair each UTF-16 unit is exactly one code point,
-  // including isolated surrogates. Paired text uses the original scan.
-  if (fastLength && !SURROGATE_PAIR.test(text)) return text.length;
+/**
+ * One linear UTF-16 pass: code-point count plus whether the text contains any
+ * valid surrogate pair. `paired` lets boundary lookup skip its scan entirely
+ * when every UTF-16 unit is already one code point.
+ */
+function scanPoints(text) {
   let count = 0;
+  let paired = false;
   for (let i = 0; i < text.length; i++, count++) {
     const unit = text.charCodeAt(i);
     if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
       const next = text.charCodeAt(i + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) i++;
+      if (next >= 0xdc00 && next <= 0xdfff) { i++; paired = true; }
     }
   }
-  return count;
+  return { length: count, paired };
 }
 
-// Convert a code-point boundary to a UTF-16 offset, scanning from the closer
-// end. Boundaries never combine a surrogate split across separate blocks.
-function pointOffset(text, position, length) {
+/**
+ * fastLength is the only switch that adds a probe: when a regular expression
+ * finds no adjacent surrogate pair, UTF-16 length is already the code-point
+ * count, so the linear pass is skipped. Text WITH pairs pays for the probe and
+ * then still runs the full scan — measure this regression before enabling it.
+ */
+function analyze(text, fastLength) {
+  if (fastLength && !SURROGATE_PAIR.test(text)) {
+    return { length: text.length, paired: false };
+  }
+  return scanPoints(text);
+}
+
+// Convert a code-point boundary to a UTF-16 offset. With no valid pair in the
+// block, offsets equal positions. Otherwise scan from the closer end. A
+// boundary never splits a surrogate pair across separate blocks.
+function pointOffset(text, position, length, paired) {
   if (position <= 0) return 0;
   if (position >= length) return text.length;
+  if (!paired) return position;
   if (position <= length - position) {
     let offset = 0;
     for (let points = 0; points < position; points++) {
@@ -72,14 +91,16 @@ export class LeetAccelerator extends ToolResultPruner {
   measureContent(blocks) {
     if (!this.enabled) return super.measureContent(blocks);
     let chars = 0;
-    for (const block of blocks) if (block.type === 'text') chars += countPoints(block.text, this.fastLength);
+    for (const block of blocks) if (block.type === 'text') chars += analyze(block.text, this.fastLength).length;
     return chars;
   }
 
   pruneContent(blocks) {
     if (!this.enabled) return super.pruneContent(blocks);
-    const lengths = blocks.map(block => block.type === 'text' ? countPoints(block.text, this.fastLength) : 0);
-    const totalChars = lengths.reduce((sum, length) => sum + length, 0);
+    const analyzed = blocks.map(block => block.type === 'text'
+      ? analyze(block.text, this.fastLength)
+      : { length: 0, paired: false });
+    const totalChars = analyzed.reduce((sum, entry) => sum + entry.length, 0);
     if (totalChars <= this.config.thresholdChars) return null;
 
     const removedStart = this.config.headChars;
@@ -93,15 +114,15 @@ export class LeetAccelerator extends ToolResultPruner {
         pruned.push(block);
         continue;
       }
-      const length = lengths[i];
+      const { length, paired } = analyzed[i];
       const blockStart = consumed;
       const blockEnd = blockStart + length;
       const headEnd = Math.min(length, Math.max(0, removedStart - blockStart));
       const tailStart = Math.min(length, Math.max(0, removedEnd - blockStart));
       const marker = blockStart < removedEnd && blockEnd > removedStart && !markerInserted ? PRUNE_MARKER : '';
       if (marker) markerInserted = true;
-      const text = block.text.slice(0, pointOffset(block.text, headEnd, length))
-        + marker + block.text.slice(pointOffset(block.text, tailStart, length));
+      const text = block.text.slice(0, pointOffset(block.text, headEnd, length, paired))
+        + marker + block.text.slice(pointOffset(block.text, tailStart, length, paired));
       if (text.length > 0) pruned.push({ ...block, text });
       consumed = blockEnd;
     }

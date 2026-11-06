@@ -1,71 +1,119 @@
 # dsh-leet-accelerator
 
-面向 DeepSeek Harness 的独立实验插件。它保留上游工具结果裁剪的输出和会话记录方式，通过一次线性扫描和双端定位，减少处理长文本时的临时数组分配。本项目与 OpenBot 无关。
+Independent, optional allocation-conscious tool-result pruning for **DeepSeek Harness (DSH)**, with per-optimization switches and Web UI buttons. This project is **not related to OpenBot** and is not an official DeepSeek plugin.
 
-## 改了哪里，使用了什么算法
+[中文说明](README.zh.md) · [Verification record](VERIFICATION.md)
 
-本插件针对官方 [`@deepseek-ai/dsh-compaction-tool-result-pruner`](https://github.com/deepseek-ai/deepseek-harness/blob/fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159/packages/compaction/compaction-tool-result-pruner/src/index.ts) 的 `measureContent` 和 `pruneContent`。上游每次通过 `Array.from(text)` 按 Unicode 码点展开文本，再选取要保留的头尾。
+## What it changes
 
-- **线性扫描**：按 UTF-16 代理对规则统计 Unicode 码点，避免为整个字符串创建码点数组。
-- **双指针／双端定位**：从更接近目标的一端定位要保留的头部或尾部边界，再直接切片。保留跨块、孤立代理字符和非文本块的原有语义。
+Upstream [`@deepseek-ai/dsh-compaction-tool-result-pruner`](https://github.com/deepseek-ai/deepseek-harness/blob/fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159/packages/compaction/compaction-tool-result-pruner/src/index.ts) implements `measureContent` and `pruneContent` by expanding each text block with `Array.from(text)` into a code-point array, then `slice().join('')` on the head and tail. For a long tool result that allocates one array of per-code-point strings plus two more slices.
 
-这是一项优化，使用了两种基础算法思路；并非实现了多道 LeetCode 题。插件继承官方 `pruneSession`，保留 token 计量、事件和回放机制。关闭优化时仍会执行官方裁剪，不会关闭 Harness 的上下文保护。
+This bundle replaces the `toolResultPruner` provider **only where its patch applies** and keeps the upstream `pruneSession` (shadow-price events, token meter, replay). Two independent switches:
 
-## 测量结果
+| Switch | Default | What it does |
+|---|---|---|
+| `enabled` | `false` | Linear UTF-16 scan instead of `Array.from`, recording in the same pass whether the block contains a valid surrogate pair. Boundary lookup is O(1) when there is no pair (a UTF-16 offset equals a code-point position), otherwise it scans from the nearer end. No whole-string code-point array is allocated. |
+| `fastLength` | `false` | **Experimental candidate.** Probes with a regular expression; when the block has no adjacent surrogate pair, `text.length` is already the code-point count, so the linear scan is skipped. Text *with* pairs pays for the probe and still runs the scan. Depends on `enabled`; with `enabled: false` it does not participate in the algorithm. |
 
-下表是本机 Apple Silicon、Node 24.16.0 的合成微基准，只计 `pruneContent`，不是完整任务耗时。每个场景预热 12 次，交替运行关闭和开启各 60 次，表中为中位数（P50）；P95 和原始数据见 [`benchmark/last-run.json`](benchmark/last-run.json)。2026-11-06 测得：
+Four combinations are tested: `enabled × fastLength`. In either `enabled: false` state the code delegates to `super.measureContent` / `super.pruneContent`, i.e. the official algorithm runs unchanged and context protection stays on.
 
-| 输入 | 关闭（官方算法） | 开启 | 中位耗时下降 |
-| --- | ---: | ---: | ---: |
-| 4,096 码点 ASCII，未超过裁剪阈值 | 0.026 ms | 0.0085 ms | 约 67% |
-| 300,000 码点 ASCII | 4.147 ms | 0.519 ms | 约 87.5% |
-| 300,000 码点混合 Unicode | 6.210 ms | 1.161 ms | 约 81.3% |
-| 297,000 码点、多内容块 | 4.740 ms | 0.923 ms | 约 80.5% |
+`fastLength` is **not** a validated optimization. It regresses on emoji-heavy and multi-block inputs (see below) and has never been measured against a real model task. Keep it off unless you have measured your own workload.
 
-计时会随设备、输入和系统负载变化；没有测量内存峰值、实际模型任务时间、Token 消耗或真实任务成功率。上游只在上下文压缩条件满足时调用裁剪服务，因此这些数字不表示所有任务都会加速。
+## Local microbenchmark
 
-## 兼容范围与安装
+`benchmark/compare.js`, Node v24.16.0 on darwin/arm64, `pruneContent` only. 12 warmups, 60 alternating samples per variant, alternating variant order each round. Milliseconds. Full data in [`benchmark/last-run.json`](benchmark/last-run.json).
 
-本实验锁定 DeepSeek Harness `0.2.2-rc.1`、Node.js 24.9 或更新版本；源码参考 `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`。已在隔离的 **base/headless 同作用域组合**中实际加载验证。Web 会话的 standard、cordis、ptc 等 preset 使用隔离的裁剪服务，本插件的顶层 patch 不控制这些会话，暂不支持。
+| Case | Code points | Official P50 / P95 | Linear P50 / P95 | +fastLength P50 / P95 | Linear gain | fastLength vs linear |
+|---|---:|---:|---:|---:|---:|---:|
+| short-ascii | 4096 | 0.0261 / 0.1252 | 0.0075 / 0.0630 | 0.0003 / 0.0045 | 71.2% | 95.6% |
+| large-ascii | 300000 | 6.5405 / 16.5320 | 0.8298 / 3.1730 | 0.0031 / 0.0075 | 87.3% | 99.6% |
+| large-cjk | 300000 | 6.5791 / 34.3798 | 0.8538 / 3.3254 | 0.2352 / 0.8321 | 87.0% | 72.5% |
+| large-emoji | 150000 | 5.6723 / 20.9982 | 0.7117 / 3.0680 | 0.7606 / 2.7589 | 87.5% | **-6.9%** |
+| large-mixed | 300000 | 12.8945 / 179.9068 | 1.4041 / 5.7415 | 1.4815 / 13.2795 | 89.1% | **-5.5%** |
+| many-blocks | 297000 | 9.1445 / 14.5886 | 1.1627 / 3.8307 | 1.3062 / 4.6193 | 87.3% | **-12.3%** |
 
-在可写位置保存本插件目录，先创建或选定兼容的 headless profile，再运行：
+P95 is noisy on this machine (one official large-mixed sample reached 179.9 ms, consistent with GC or system load). 60 samples per variant is a small sample; these are single-process, single-machine numbers and are **not** a model task, end-to-end latency, token usage, memory, or success-rate measurement. The pruner only runs when compaction conditions are met, so no overall task speedup is implied.
+
+## Web switches
+
+The client half registers a `conversation.hero.options` slot entry with two buttons: **Linear prune** and **Fast count (experimental)**. Selecting a state switches the session's agent preset through the official `ctx.remote.agentPresets.select(sessionId, presetId)` endpoint — no upstream code is modified or monkey-patched.
+
+Three derived preset snapshots are registered from the current `standard` preset:
+
+| Preset id | `enabled` | `fastLength` |
+|---|---|---|
+| `leet-comparison-off` | official provider only | n/a |
+| `leet-comparison-linear` | `true` | `false` |
+| `leet-comparison-fast` | `true` | `true` |
+
+- `standard` and any custom presets are **never overwritten**; registration fails closed and rolls back on a collision.
+- A preset is a startup snapshot. Buttons only act on the current **blank** session and on sessions created afterwards. A started session is rejected by the Host (`agent-preset/locked`); the UI disables the buttons and explains why. The plugin never claims an in-flight session switches instantly.
+- `fastLength` is disabled in the UI until `enabled` is on, with the dependency stated in the button tooltip.
+- Save failures, connection loss and server-side refusals are shown in a `role="status"` live region; a busy state blocks double submission. Buttons are native `<button>`s with `aria-pressed`, `aria-describedby` and a labelled group, so they work from the keyboard.
+- On restart or reload the state is read back from the session's `agentPreset` projection, not from a client-only flag.
+
+**Lifecycle limitation (important):** a session records the preset id it used. After this bundle is uninstalled, sessions that used `leet-comparison-linear` or `leet-comparison-fast` may no longer be able to recover that composition, because those snapshots name this package as their pruner provider. The `leet-comparison-off` snapshot uses only official providers and stays resolvable. Switch affected sessions back to `standard` **before** uninstalling. The preset descriptions state this too.
+
+See [VERIFICATION.md](VERIFICATION.md) for exactly which Web checks were actually performed, on which DSH version, and which remain open.
+
+## Compatibility and installation
+
+- DSH `0.2.2-rc.1` is the version actually used for parity tests. `engines.dsh` is `>=0.2.2-rc.1 <0.3.0`; other versions in that range were **not** verified.
+- Node.js >= 24.9.0. Upstream reference commit `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`.
+- Peer dependencies must resolve to the running installation's copies: `@deepseek-ai/dsh-compaction-tool-result-pruner` `0.2.2-rc.1`, `@deepseek-ai/schemastery` `~3.19.0`.
+- Pure JavaScript, no build step: the `./client` export points at a checked-in browser factory script (a lazy-CJS `window.__ModuleLoader__.load` registration), and the root export is the Node plugin. Nothing is generated at install time, so a Git install needs no `prepare` script and no `pnpm allowBuilds` allowlist. Pin a commit anyway.
 
 ```sh
-dsh plugin --profile YOUR_HEADLESS_PROFILE add /absolute/path/to/dsh-leet-accelerator
+# Git source, pinned to a released tag (no build permission needed)
+dsh plugin --profile YOUR_WEB_PROFILE add github:Harzva/dsh-leet-accelerator#v0.2.0
+# ...or pin the exact commit SHA instead of the tag
+
+# Or a released tarball
+dsh plugin --profile YOUR_WEB_PROFILE add ./dsh-leet-accelerator-0.2.0.tgz
+
+# Inspect the composed layer, then boot
+dsh --profile YOUR_WEB_PROFILE --dump-config
+dsh --profile YOUR_WEB_PROFILE
+
+# Upgrade / remove
+dsh plugin --profile YOUR_WEB_PROFILE update dsh-leet-accelerator
+dsh plugin --profile YOUR_WEB_PROFILE remove dsh-leet-accelerator
 ```
 
-安装后，bundle 默认启用优化实现，并禁用同作用域的官方 provider；不要另外在该作用域同时启用两个 `toolResultPruner`。用户的 profile、home 或命令行后续 patch 可能覆盖此设置。用 `dsh --profile YOUR_HEADLESS_PROFILE --dump-config` 检查实际组合。
+`--dump-config` only proves the layer composition. It does **not** prove that a Web session actually uses the provider; see the verification record.
 
-## 开启与关闭按钮
+## Switches outside the Web UI
 
-在**可写的插件目录**中运行：
+Two headless ways to control the same two flags, without touching a user profile:
+
+1. Bundle patch default — `cordis.patch.yml` inserts `dsh-leet-accelerator` with `enabled: true`. A later `--patch` overlay can override the row by id; remember a patch replaces the whole `config`, so restate `thresholdChars`, `headChars`, `tailChars`.
+2. `npm run control` — a local HTTP page that writes `control/accelerator.patch.json` in the plugin directory only. Pass it with `dsh --profile NAME --patch /absolute/path/to/control/accelerator.patch.json "task"`. It stores the setting read at the **next** startup, does not detect a running instance, and must never be exposed to a network or edited by two processes.
+
+The bundle patch disables the official `tool-result-pruner` row in the same scope. Do not enable both providers for one `toolResultPruner` scope. Web sessions use isolated compaction groups inside their agent preset, which is why the preset-based switches above exist.
+
+## Tests and reproduction
 
 ```sh
-npm run control
+npm ci
+npm test          # 17 tests: four switch combinations, Unicode edges, session replay, client unit tests
+npm run benchmark # writes benchmark/last-run.json
 ```
 
-打开终端打印的 `http://127.0.0.1:.../`，选择“开启算法”或“关闭算法”。控制台只写本插件目录下的 `control/accelerator.patch.json`，首次创建该文件时默认为关闭；它不更改用户 profile。停止控制台使用 Ctrl-C。
+`test/parity.test.js` compares all four combinations against the official `0.2.2-rc.1` implementation: threshold boundaries, 300 seeded random multi-block Unicode cases, isolated surrogates, ZWJ sequences, odd head/tail budgets, invalid config, and full `pruneSession` event/replay parity. `test/web-presets.test.js` covers preset derivation plus client-side slot/state-machine unit tests with a fake React — those are **unit tests**, not browser or session-scope proof.
 
-在启动目标 profile 时加入显示的文件：
+## Market status
 
-```sh
-dsh --profile YOUR_HEADLESS_PROFILE --patch /absolute/path/to/dsh-leet-accelerator/control/accelerator.patch.json "你的任务"
-```
+Per the [official plugin index docs](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/plugin-market.md), DSH **ships no built-in index source**. Discover reads a third-party `index.json` that a user adds manually; indexes are third-party content. A GitHub `dsh-plugin` topic helps humans find the repository but does **not** put a plugin into any DSH market. This project is **not listed in any concrete market index**. See [VERIFICATION.md](VERIFICATION.md) for the format checks performed.
 
-按钮保存的是**下次启动读取的设置**，不会更改已运行会话。界面显示保存值，而不是对运行实例状态的检测。该覆盖文件固定使用阈值 8192、头部 4096、尾部 1024 个 Unicode 码点；如果需要自定义预算，请自行编辑独立 patch 并保留完整配置。请勿将控制台暴露到网络或以多个进程同时编辑该文件。
+## Known limits
 
-## 测试与复现
+- No real-model before/after comparison exists. The single real request returned HTTP 402 / `QUOTA: Insufficient Balance`; no tool ran and no pruner fired. No mock result is presented as a real one.
+- `fastLength` regresses on emoji-heavy and multi-block inputs and is off by default.
+- Preset-based switching cannot change a session that has already started.
+- Derived preset ids can break historical session recovery after uninstall (see above).
+- Parity is verified only against DSH `0.2.2-rc.1`; parity with other releases in the declared range is untested.
+- The top-level bundle patch does not control Web sessions' isolated compaction groups; use the derived presets for those.
 
-在插件目录内安装开发依赖后：
+## License
 
-```sh
-npm install
-npm test
-npm run benchmark
-```
-
-测试使用官方 `0.2.2-rc.1` 实现作为对照，覆盖阈值、300 组随机多块 Unicode 输入、孤立代理字符、无效配置，以及真实 Session 的裁剪事件、重复处理和回放。实验没有使用真实模型或用户数据。
-
-## 来源与许可
-
-基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 MIT 许可实现；改写部分保留其版权和许可，见 [LICENSE](LICENSE)。这是独立实验项目，并非 DeepSeek 官方插件。
+MIT. Based on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), MIT, Copyright (c) 2026 DeepSeek. The upstream copyright and permission notice are retained in [LICENSE](LICENSE).

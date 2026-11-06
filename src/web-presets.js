@@ -34,10 +34,17 @@ export function derivePresets(source) {
   const fast = structuredClone(linear)
   const fastGroup = fast.plugins.find(row => row.id === 'compaction')
   fastGroup.config.find(row => row.id === 'tool-result-pruner').config.fastLength = true
+  // Lifecycle: these are registered preset IDs, so a session that recorded one
+  // keeps referencing it after this plugin is disabled or uninstalled. We do
+  // NOT silently rewrite those sessions. The off snapshot uses only official
+  // providers and stays resolvable; the two optimized snapshots name this
+  // package, so their historical sessions may fail to recover once the bundle
+  // is gone. The descriptions surface that, and README documents switching
+  // affected sessions back to `standard` before uninstalling.
   return [
-    { ...off, id: ids[0], name: 'Leet 优化关闭（标准预设快照）', description: '使用官方裁剪算法；只影响新会话。', order: 100 },
-    { ...linear, id: ids[1], name: 'Leet 线性裁剪（标准预设快照）', description: '使用线性裁剪；只影响新会话。', order: 101 },
-    { ...fast, id: ids[2], name: 'Leet 快速计数（标准预设快照）', description: '使用线性裁剪和快速计数；只影响新会话。', order: 102 },
+    { ...off, id: ids[0], name: 'Leet 优化关闭（标准预设快照）', description: '官方裁剪算法，仅使用官方 provider；只影响空白/新会话。', order: 100 },
+    { ...linear, id: ids[1], name: 'Leet 线性裁剪（标准预设快照）', description: '线性裁剪；只影响空白/新会话。卸载本插件后，使用此预设的历史会话可能无法恢复。', order: 101 },
+    { ...fast, id: ids[2], name: 'Leet 快速计数（实验，标准预设快照）', description: '线性裁剪 + 快速计数；实验候选，纯 emoji 等输入可能变慢；只影响空白/新会话。卸载本插件后历史会话可能无法恢复。', order: 102 },
   ]
 }
 
@@ -60,13 +67,19 @@ export async function apply(ctx) {
   }
   const definitions = derivePresets(source)
   const disposers = []
+  let disposed = false
+  // Copy before reversing: the cleanup callback must stay idempotent even if
+  // the host invokes it more than once, and must not reorder the shared array.
+  async function rollback() {
+    if (disposed) return
+    disposed = true
+    for (const dispose of [...disposers].reverse()) await dispose()
+  }
   try {
     for (const definition of definitions) disposers.push(await ctx.agentPresets.register(definition))
   } catch (error) {
-    for (const dispose of disposers.reverse()) await dispose()
+    await rollback()
     throw error
   }
-  ctx.effect(() => async () => {
-    for (const dispose of disposers.reverse()) await dispose()
-  })
+  ctx.effect(() => async () => { await rollback() })
 }

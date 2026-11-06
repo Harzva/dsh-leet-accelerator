@@ -1,14 +1,64 @@
 {
   "name": "dsh-leet-accelerator",
-  "version": "0.1.0",
-  "description": "Optional allocation-conscious tool-result pruning for DeepSeek Harness",
+  "version": "0.2.0",
+  "description": "Optional allocation-conscious tool-result pruning for DeepSeek Harness, with independent Web switches",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Harzva/dsh-leet-accelerator.git"
+  },
+  "homepage": "https://github.com/Harzva/dsh-leet-accelerator#readme",
+  "bugs": {
+    "url": "https://github.com/Harzva/dsh-leet-accelerator/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh-bundle",
+    "tool-result-pruner"
+  ],
   "type": "module",
   "main": "./src/index.js",
-  "exports": { ".": "./src/index.js", "./web-presets": "./src/web-presets.js" },
-  "files": ["src", "control/index.html", "control-server.js", "cordis.patch.yml", "benchmark", "test", "README.md", "LICENSE"],
-  "engines": { "dsh": "0.2.2-rc.1", "node": ">=24.9.0" },
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./src/index.js",
+    "./web-presets": "./src/web-presets.js",
+    "./client": "./src/client/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./icon.svg": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "icon.svg",
+    "control/index.html",
+    "control-server.js",
+    "benchmark",
+    "test",
+    "research",
+    "README.md",
+    "README.zh.md",
+    "VERIFICATION.md",
+    "LICENSE"
+  ],
+  "engines": { "dsh": ">=0.2.2-rc.1 <0.3.0", "node": ">=24.9.0" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
+    }
+  },
   "scripts": {
     "test": "node --test test/*.test.js",
     "benchmark": "node benchmark/compare.js",

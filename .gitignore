@@ -1,7 +1,21 @@
 node_modules/
 control/accelerator.patch.json
+control/.accelerator-*.tmp
 *.log
 *.tgz
 .DS_Store
 tmp/
+*.local
+real-task-evidence/
+evidence/
+private/
+
+# Never commit credentials, keys, or local env files
 .credentials*
+credentials*
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*secret*
