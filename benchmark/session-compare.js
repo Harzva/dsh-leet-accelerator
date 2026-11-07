@@ -147,7 +147,12 @@ for (const item of cases) {
     assert.deepEqual(run(variant.service, seed).result, reference,
       `parity: ${item.name} / ${variant.name}`);
   }
-  for (let i = 0; i < WARMUPS; i++) for (const variant of variants) run(variant.service, seed);
+  // Alternate the warmup order too, so JIT/branch warming does not
+  // systematically favour the variants that always warm up first (review S3).
+  for (let i = 0; i < WARMUPS; i++) {
+    const order = i % 2 === 0 ? variants : [...variants].reverse();
+    for (const variant of order) run(variant.service, seed);
+  }
   const samples = Object.fromEntries(variants.map(v => [v.name, []]));
   // Alternate the order each round so a drifting machine clock does not
   // systematically favour the first variant.

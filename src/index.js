@@ -9,7 +9,24 @@ import { createMetricsCache } from './metrics-cache.js';
 // whole tool result. A lone surrogate counts as one code point, exactly as the
 // upstream string iterator does.
 const SURROGATE_PAIR = /[\uD800-\uDBFF][\uDC00-\uDFFF]/;
-const MARKER_POINTS = Array.from(PRUNE_MARKER).length;
+
+/**
+ * charsAfter is derived from code-point positions, adding MARKER_POINTS for the
+ * inserted marker. That is only exact if the marker cannot change how many code
+ * points the pruned text has: a pure-ASCII marker can never join a neighbouring
+ * high or low surrogate into a new pair, and its code-point count equals its
+ * UTF-16 length. Fail fast at module load if upstream ever changes PRUNE_MARKER
+ * to something non-ASCII, instead of silently mis-counting charsAfter.
+ * Exported so tests can prove both the pass and the fail-fast behaviour.
+ */
+export function assertSafeMarker(marker) {
+  if (typeof marker !== 'string' || /[^\x00-\x7f]/.test(marker)) {
+    throw new Error('tool-result prune: PRUNE_MARKER must be a pure-ASCII string for derived charsAfter');
+  }
+  return marker.length;
+}
+
+const MARKER_POINTS = assertSafeMarker(PRUNE_MARKER);
 
 /**
  * One linear UTF-16 pass: code-point count plus whether the text contains any
